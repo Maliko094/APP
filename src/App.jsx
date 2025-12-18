@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 // =====================
 const SITE = 'AG WS';
 
-const BRUGERE = [
+const BRUGERE = [ 
   // BPO’er
   { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
   { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
