@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { jsPDF } from 'jspdf';   
 
 // =====================
 // KONFIGURATION
@@ -155,24 +154,7 @@ export default function App() {
     setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
   }
 
-  function hentPDF() {
-    if (!dag?.godkendt) return;
-    const pdf = new jsPDF();
-    let y = 12;
-
-    pdf.setFontSize(14);
-    pdf.text('SiteHub – Daglig BPO-rapport', 10, y); y += 8;
-    pdf.setFontSize(11);
-    pdf.text(`Site: ${SITE}`, 10, y); y += 6;
-    pdf.text(`Dato: ${dag.dato}`, 10, y); y += 8;
-
-    dag.opgaver.forEach(o => {
-      pdf.text(`• [${o.kategori}] ${o.tekst}`, 10, y); y += 5;
-      if (o.tidspunkt) {
-        pdf.text(`   Udført af: ${o.udførtAf.map(u => u.navn).join(', ')} kl. ${new Date(o.tidspunkt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`, 10, y);
-        y += 5;
-      }
-    });
+      });
 
     y += 8;
     pdf.text(`Godkendt af: ${dag.godkendtAf.navn}`, 10, y);
@@ -240,9 +222,7 @@ export default function App() {
           <section style={{ marginTop: 16, padding: 16, background: '#ecfdf5', borderRadius: 8 }}>
             <strong>Dagen er godkendt</strong>
             <div>Godkendt af {dag.godkendtAf?.navn}</div>
-            {bruger?.rolle === 'logistikchef' && (
-              <button onClick={hentPDF} style={{ marginTop: 10, padding: 12, width: '100%' }}>Hent PDF-rapport</button>
-            )}
+            
           </section>
         )}
       </div>
