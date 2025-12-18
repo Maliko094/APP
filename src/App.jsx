@@ -1,25 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
+import jsPDF from 'jspdf';
 
 // =====================
-// CONFIG
+// KONFIGURATION (DANSK)
 // =====================
 const SITE = 'AG WS';
-const USERS = [
-  { id: 'oliver', name: 'Oliver', role: 'bpo', pin: '1111' },
-  { id: 'emil', name: 'Emil', role: 'bpo', pin: '2222' },
-  { id: 'william', name: 'William', role: 'bpo', pin: '3333' },
-  { id: 'jon', name: 'Jon', role: 'chef', pin: '9999' },
+
+const BRUGERE = [
+  { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
+  { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
+  { id: 'william', navn: 'William', rolle: 'bpo', pinkode: '3333' },
+  { id: 'jon', navn: 'Jon', rolle: 'chef', pinkode: '9999' },
 ];
 
-const OPENING_TASKS = [
+const ÅBNINGSOPGAVER = [
   'Åbne arbejdstilladelse – husk sikkerhedskort',
-  'Tjek SiteHub hegn',
+  'Tjek SiteHub-hegn',
   'Registrér leverancer i Sitebooking',
   'Rens skærm til fotogenkendelse',
   'Billede af følgeseddel',
 ];
 
-const CLOSING_TASKS = [
+const LUKKEOPGAVER = [
   'Tjek cigaretskodder',
   'Rens måtter',
   'Oprydning',
@@ -27,37 +29,38 @@ const CLOSING_TASKS = [
   'Plads lukket korrekt',
 ];
 
-const STORAGE_KEY = 'sitehub_bpo_day_v1';
+const STORAGE_KEY = 'sitehub_bpo_dag_v2';
 
 // =====================
-// HELPERS
+// HJÆLPERE
 // =====================
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const nowISO = () => new Date().toISOString();
-const uid = () => Math.random().toString(36).slice(2, 10);
+const dagsDato = () => new Date().toISOString().slice(0, 10);
+const nuTid = () => new Date().toISOString();
+const id = () => Math.random().toString(36).slice(2, 10);
 
-function freshDay() {
+function nyDag() {
   return {
     site: SITE,
-    date: todayISO(),
-    approved: false,
-    approvedBy: null,
-    tasks: [
-      ...OPENING_TASKS.map(t => ({
-        id: uid(),
-        text: t,
-        type: 'opening',
-        done: false,
-        signedBy: [],
-        completedAt: null,
+    dato: dagsDato(),
+    godkendt: false,
+    godkendtAf: null,
+    lukkevagt: null,
+    opgaver: [
+      ...ÅBNINGSOPGAVER.map(tekst => ({
+        id: id(),
+        tekst,
+        type: 'åbning',
+        udført: false,
+        udførtAf: [],
+        tidspunkt: null,
       })),
-      ...CLOSING_TASKS.map(t => ({
-        id: uid(),
-        text: t,
-        type: 'closing',
-        done: false,
-        signedBy: [],
-        completedAt: null,
+      ...LUKKEOPGAVER.map(tekst => ({
+        id: id(),
+        tekst,
+        type: 'lukke',
+        udført: false,
+        udførtAf: [],
+        tidspunkt: null,
       })),
     ],
   };
@@ -67,175 +70,183 @@ function freshDay() {
 // APP
 // =====================
 export default function App() {
-  // auth
-  const [userId, setUserId] = useState('');
-  const [pin, setPin] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authError, setAuthError] = useState('');
+  // Login
+  const [brugerId, setBrugerId] = useState('');
+  const [pinkode, setPinkode] = useState('');
+  const [bruger, setBruger] = useState(null);
+  const [loginFejl, setLoginFejl] = useState('');
 
-  // day state
-  const [day, setDay] = useState(null);
+  // Dag
+  const [dag, setDag] = useState(null);
 
-  // adhoc
-  const [adhocText, setAdhocText] = useState('');
+  // AD HOC
+  const [adhocTekst, setAdhocTekst] = useState('');
 
-  // init day (with corruption guard)
+  // INIT
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) throw new Error('no data');
-      const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.tasks)) throw new Error('invalid');
-      // reset day if date changed
-      if (parsed.date !== todayISO()) {
-        const fresh = freshDay();
-        setDay(fresh);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
-      } else {
-        setDay(parsed);
-      }
+      const gemt = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (!gemt || gemt.dato !== dagsDato()) throw new Error();
+      setDag(gemt);
     } catch {
-      const fresh = freshDay();
-      setDay(fresh);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+      const frisk = nyDag();
+      setDag(frisk);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(frisk));
     }
   }, []);
 
   useEffect(() => {
-    if (day) localStorage.setItem(STORAGE_KEY, JSON.stringify(day));
-  }, [day]);
+    if (dag) localStorage.setItem(STORAGE_KEY, JSON.stringify(dag));
+  }, [dag]);
 
-  // auth actions
-  function login() {
-    const u = USERS.find(x => x.id === userId && x.pin === pin);
-    if (!u) {
-      setAuthError('Forkert navn eller pinkode');
+  // LOGIN
+  function logInd() {
+    const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
+    if (!fundet) {
+      setLoginFejl('Forkert bruger eller pinkode');
       return;
     }
-    setCurrentUser(u);
-    setPin('');
-    setAuthError('');
+    setBruger(fundet);
+    setLoginFejl('');
+    setPinkode('');
   }
 
-  function logout() {
-    setCurrentUser(null);
-    setUserId('');
-    setPin('');
+  function logUd() {
+    setBruger(null);
+    setBrugerId('');
+    setPinkode('');
   }
 
-  // task actions
-  function toggleTask(taskId) {
-    if (!currentUser || currentUser.role !== 'bpo' || day.approved) return;
-    setDay(prev => ({
+  // OPGAVER
+  function udførOpgave(opgaveId) {
+    if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
+
+    setDag(prev => ({
       ...prev,
-      tasks: prev.tasks.map(t => {
-        if (t.id !== taskId) return t;
-        const already = t.signedBy.some(s => s.id === currentUser.id);
-        if (already) return t;
-        const signedBy = [...t.signedBy, { id: currentUser.id, name: currentUser.name, time: nowISO() }];
+      opgaver: prev.opgaver.map(o => {
+        if (o.id !== opgaveId) return o;
+
+        // Lukkevagt: kun én person
+        if (o.type === 'lukke' && prev.lukkevagt && prev.lukkevagt !== bruger.navn) return o;
+
+        const allerede = o.udførtAf.some(u => u.navn === bruger.navn);
+        if (allerede) return o;
+
         return {
-          ...t,
-          done: true,
-          signedBy,
-          completedAt: nowISO(),
+          ...o,
+          udført: true,
+          udførtAf: [...o.udførtAf, { navn: bruger.navn, tid: nuTid() }],
+          tidspunkt: nuTid(),
         };
-      })
+      }),
+      lukkevagt: prev.lukkevagt || (prev.opgaver.find(o => o.id === opgaveId)?.type === 'lukke' ? bruger.navn : prev.lukkevagt),
     }));
   }
 
-  function addAdhoc() {
-    if (!currentUser || currentUser.role !== 'bpo' || day.approved) return;
-    if (!adhocText.trim()) return;
-    setDay(prev => ({
+  function tilføjAdhoc() {
+    if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
+    if (!adhocTekst.trim()) return;
+
+    setDag(prev => ({
       ...prev,
-      tasks: [...prev.tasks, {
-        id: uid(),
-        text: adhocText.trim(),
+      opgaver: [...prev.opgaver, {
+        id: id(),
+        tekst: adhocTekst.trim(),
         type: 'adhoc',
-        done: false,
-        signedBy: [],
-        completedAt: null,
+        udført: false,
+        udførtAf: [],
+        tidspunkt: null,
       }]
     }));
-    setAdhocText('');
+    setAdhocTekst('');
   }
 
-  // approval
-  const allDone = useMemo(() => (day?.tasks || []).length > 0 && (day?.tasks || []).every(t => t.done), [day]);
+  const alleUdført = useMemo(() => dag?.opgaver.every(o => o.udført), [dag]);
 
-  function approveDay() {
-    if (!currentUser || currentUser.role !== 'chef') return;
-    if (!allDone) return;
-    setDay(prev => ({ ...prev, approved: true, approvedBy: { name: currentUser.name, time: nowISO() } }));
+  // GODKEND
+  function godkendDag() {
+    if (!bruger || bruger.rolle !== 'chef' || !alleUdført) return;
+    setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
   }
 
-  // =====================
-  // RENDER
-  // =====================
-  if (!day) return null;
+  // PDF
+  function hentPDF() {
+    if (!dag?.godkendt) return;
+    const pdf = new jsPDF();
+    let y = 12;
+    pdf.text(`SiteHub – Daglig BPO-rapport`, 10, y); y += 8;
+    pdf.text(`Site: ${SITE}`, 10, y); y += 6;
+    pdf.text(`Dato: ${dag.dato}`, 10, y); y += 8;
+
+    dag.opgaver.forEach(o => {
+      pdf.text(`• [${o.type.toUpperCase()}] ${o.tekst}`, 10, y); y += 5;
+      if (o.tidspunkt) {
+        pdf.text(`   Udført af: ${o.udførtAf.map(u => u.navn).join(', ')} kl. ${new Date(o.tidspunkt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}`, 10, y);
+        y += 5;
+      }
+    });
+
+    y += 6;
+    pdf.text(`Godkendt af: ${dag.godkendtAf.navn}`, 10, y);
+    pdf.save(`BPO_${SITE}_${dag.dato}.pdf`);
+  }
+
+  if (!dag) return null;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f6f8', padding: 16, fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#f4f6f8', padding: 16, fontFamily: 'Arial' }}>
       <h2>SiteHub BPO – {SITE}</h2>
-      <p style={{ color: '#666' }}>Dato: {day.date}</p>
+      <p>Dato: {dag.dato}</p>
 
-      {!currentUser ? (
+      {!bruger ? (
         <div style={{ background: '#fff', padding: 16, borderRadius: 8, maxWidth: 420 }}>
           <h3>Log ind</h3>
-          <select value={userId} onChange={e => setUserId(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }}>
+          <select value={brugerId} onChange={e => setBrugerId(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }}>
             <option value="">Vælg bruger</option>
-            {USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {BRUGERE.map(b => <option key={b.id} value={b.id}>{b.navn}</option>)}
           </select>
-          <input type="password" placeholder="Pinkode" value={pin} onChange={e => setPin(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }} />
-          <button onClick={login} style={{ width: '100%', padding: 12 }}>Log ind</button>
-          {authError && <p style={{ color: 'red' }}>{authError}</p>}
+          <input type="password" placeholder="Pinkode" value={pinkode} onChange={e => setPinkode(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }} />
+          <button onClick={logInd} style={{ width: '100%', padding: 12 }}>Log ind</button>
+          {loginFejl && <p style={{ color: 'red' }}>{loginFejl}</p>}
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <strong>Logget ind:</strong> {currentUser.name} ({currentUser.role})
-          <button onClick={logout} style={{ marginLeft: 'auto' }}>Log ud</button>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+          <strong>Logget ind:</strong> {bruger.navn} ({bruger.rolle})
+          <button onClick={logUd} style={{ marginLeft: 'auto' }}>Log ud</button>
         </div>
       )}
 
-      <div style={{ marginTop: 12 }}>
-        {day.tasks.map(t => (
-          <div key={t.id} style={{ background: '#fff', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="checkbox"
-                checked={t.done}
-                disabled={!currentUser || currentUser.role !== 'bpo' || day.approved}
-                onChange={() => toggleTask(t.id)}
-              />
-              <strong>[{t.type}]</strong> {t.text}
-            </label>
-            {t.completedAt && (
-              <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
-                Udført af: {t.signedBy.map(s => s.name).join(', ')} · {new Date(t.completedAt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+      {dag.opgaver.map(o => (
+        <div key={o.id} style={{ background: '#fff', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="checkbox" checked={o.udført} disabled={!bruger || bruger.rolle !== 'bpo' || dag.godkendt} onChange={() => udførOpgave(o.id)} />
+            <strong>[{o.type}]</strong> {o.tekst}
+          </label>
+          {o.tidspunkt && (
+            <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
+              Udført af: {o.udførtAf.map(u => u.navn).join(', ')} kl. {new Date(o.tidspunkt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          )}
+        </div>
+      ))}
 
-      {currentUser?.role === 'bpo' && !day.approved && (
+      {bruger?.rolle === 'bpo' && !dag.godkendt && (
         <div style={{ background: '#fff', borderRadius: 8, padding: 12, marginTop: 12 }}>
           <h4>AD HOC-opgave</h4>
-          <input value={adhocText} onChange={e => setAdhocText(e.target.value)} placeholder="Skriv opgave…" style={{ width: '100%', padding: 10 }} />
-          <button onClick={addAdhoc} style={{ marginTop: 8, padding: 12, width: '100%' }}>Tilføj</button>
+          <input value={adhocTekst} onChange={e => setAdhocTekst(e.target.value)} placeholder="Skriv opgave…" style={{ width: '100%', padding: 10 }} />
+          <button onClick={tilføjAdhoc} style={{ marginTop: 8, padding: 12, width: '100%' }}>Tilføj</button>
         </div>
       )}
 
-      {currentUser?.role === 'chef' && !day.approved && (
-        <button onClick={approveDay} disabled={!allDone} style={{ marginTop: 16, padding: 14, width: '100%' }}>
-          Godkend dagen
-        </button>
+      {bruger?.rolle === 'chef' && !dag.godkendt && (
+        <button onClick={godkendDag} disabled={!alleUdført} style={{ marginTop: 16, padding: 14, width: '100%' }}>Godkend dagen</button>
       )}
 
-      {day.approved && (
+      {dag.godkendt && (
         <div style={{ marginTop: 16, padding: 12, background: '#e6f6ec', borderRadius: 8 }}>
           <strong>Dagen er godkendt</strong>
-          <div>Af: {day.approvedBy?.name}</div>
+          <div>Af: {dag.godkendtAf?.navn}</div>
+          <button onClick={hentPDF} style={{ marginTop: 8, padding: 12, width: '100%' }}>Hent PDF-rapport</button>
         </div>
       )}
     </div>
