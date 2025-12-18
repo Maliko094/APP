@@ -7,10 +7,17 @@ import jsPDF from 'jspdf';
 const SITE = 'AG WS';
 
 const BRUGERE = [
+  // BPO’er
   { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
   { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
   { id: 'william', navn: 'William', rolle: 'bpo', pinkode: '3333' },
-  { id: 'jon', navn: 'Jon', rolle: 'chef', pinkode: '9999' },
+
+  // Logistikchefer
+  { id: 'jon', navn: 'Jon', rolle: 'logistikchef', pinkode: '9999' },
+
+  // Koordinatorer (kan se alt, men ikke godkende)
+  { id: 'martin', navn: 'Martin', rolle: 'koordinator', pinkode: '4444' },
+  { id: 'catharina', navn: 'Catharina', rolle: 'koordinator', pinkode: '5555' },
 ];
 
 const ÅBNINGSOPGAVER = [
@@ -120,6 +127,7 @@ export default function App() {
   // OPGAVER
   function udførOpgave(opgaveId) {
     if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
+    if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
 
     setDag(prev => ({
       ...prev,
@@ -165,6 +173,7 @@ export default function App() {
 
   // GODKEND
   function godkendDag() {
+    if (!bruger || bruger.rolle !== 'logistikchef' || !alleUdført) return;
     if (!bruger || bruger.rolle !== 'chef' || !alleUdført) return;
     setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
   }
