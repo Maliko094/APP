@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 
 // =====================
 // KONFIGURATION
@@ -249,4 +249,3 @@ export default function App() {
     </div>
   );
 }
-
