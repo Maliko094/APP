@@ -1,27 +1,32 @@
 import { useState } from 'react';
 
-const DEFAULT_TASKS = [
-  'Åbne arbejdstilladelse – husk sikkerhedskort',
-  'Tjek SiteHub hegn',
-  'Registrér leverancer i Sitebooking',
-  'Rens skærm til fotogenkendelse'
-];
-
 export default function App() {
-  const [tasks, setTasks] = useState(DEFAULT_TASKS);
+  const [tasks, setTasks] = useState([
+    'Åbne arbejdstilladelse – husk sikkerhedskort',
+    'Tjek SiteHub hegn',
+    'Registrér leverancer i Sitebooking',
+    'Rens skærm til fotogenkendelse'
+  ]);
+
   const [checked, setChecked] = useState({});
   const [names, setNames] = useState({});
   const [currentName, setCurrentName] = useState('');
   const [adhoc, setAdhoc] = useState('');
 
   function toggle(task) {
-    if (!currentName) return alert('Indtast dit navn først');
+    if (!currentName) {
+      alert('Skriv dit navn først');
+      return;
+    }
     setChecked(prev => ({ ...prev, [task]: !prev[task] }));
     setNames(prev => ({ ...prev, [task]: currentName }));
   }
 
   function addAdhoc() {
-    if (!adhoc.trim()) return;
+    if (!adhoc.trim()) {
+      alert('Skriv en AD HOC-opgave');
+      return;
+    }
     setTasks(prev => [...prev, adhoc]);
     setAdhoc('');
   }
@@ -35,7 +40,7 @@ export default function App() {
         placeholder="Dit navn"
         value={currentName}
         onChange={e => setCurrentName(e.target.value)}
-        style={{ padding: 8, marginBottom: 20, width: '100%' }}
+        style={{ padding: 10, width: '100%', marginBottom: 20 }}
       />
 
       <ul>
@@ -61,18 +66,18 @@ export default function App() {
 
       <hr style={{ margin: '30px 0' }} />
 
-      <h3>Tilføj AD HOC-opgave</h3>
+      <h3>AD HOC-opgave</h3>
       <input
         placeholder="Skriv opgave…"
         value={adhoc}
         onChange={e => setAdhoc(e.target.value)}
-        style={{ padding: 8, width: '100%' }}
+        style={{ padding: 10, width: '100%' }}
       />
       <button
         onClick={addAdhoc}
-        style={{ marginTop: 10, padding: 10, width: '100%' }}
+        style={{ marginTop: 10, padding: 12, width: '100%' }}
       >
-        Tilføj
+        Tilføj AD HOC
       </button>
     </div>
   );
