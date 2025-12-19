@@ -70,7 +70,7 @@ export default function App() {
   const [pinkode, setPinkode] = useState('');
   const [bruger, setBruger] = useState(null);
   const [loginFejl, setLoginFejl] = useState('');
-  const [valgtRolle, setValgtRolle] = useState('');
+
   const [dag, setDag] = useState(null);
   const [adhocTekst, setAdhocTekst] = useState('');
 
@@ -92,20 +92,16 @@ export default function App() {
   }, [dag]);
 
   // Login
- function login() {
-  const emp = EMPLOYEES.find(
-    e => e.id === userId && e.role === valgtRolle
-  );
-
-  if (!emp || emp.pin !== pin) {
-    setError('Forkert rolle, bruger eller pinkode');
-    return;
+  function logInd() {
+    const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
+    if (!fundet) {
+      setLoginFejl('Forkert bruger eller pinkode');
+      return;
+    }
+    setBruger(fundet);
+    setPinkode('');
+    setLoginFejl('');
   }
-
-  setCurrentUser(emp);
-  setPin('');
-  setError('');
-}
 
   function logUd() {
     setBruger(null);
@@ -156,13 +152,6 @@ export default function App() {
   function godkendDag() {
     if (!bruger || bruger.rolle !== 'logistikchef' || !alleUdført) return;
     setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
-  }
-
-      });
-
-    y += 8;
-    pdf.text(`Godkendt af: ${dag.godkendtAf.navn}`, 10, y);
-    pdf.save(`BPO_${SITE}_${dag.dato}.pdf`);
   }
 
   if (!dag) return null;
