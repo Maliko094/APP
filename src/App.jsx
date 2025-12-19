@@ -92,16 +92,20 @@ export default function App() {
   }, [dag]);
 
   // Login
-  function logInd() {
-    const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
-    if (!fundet) {
-      setLoginFejl('Forkert bruger eller pinkode');
-      return;
-    }
-    setBruger(fundet);
-    setPinkode('');
-    setLoginFejl('');
+ function login() {
+  const emp = EMPLOYEES.find(
+    e => e.id === userId && e.role === valgtRolle
+  );
+
+  if (!emp || emp.pin !== pin) {
+    setError('Forkert rolle, bruger eller pinkode');
+    return;
   }
+
+  setCurrentUser(emp);
+  setPin('');
+  setError('');
+}
 
   function logUd() {
     setBruger(null);
