@@ -6,15 +6,10 @@ import { useEffect, useMemo, useState } from 'react';
 const SITE = 'AG WS';
 
 const BRUGERE = [
-  // BPO’er
   { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
   { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
   { id: 'william', navn: 'William', rolle: 'bpo', pinkode: '3333' },
-
-  // Logistikchef
   { id: 'jon', navn: 'Jon', rolle: 'logistikchef', pinkode: '9999' },
-
-  // Koordinatorer
   { id: 'martin', navn: 'Martin', rolle: 'koordinator', pinkode: '4444' },
   { id: 'catharina', navn: 'Catharina', rolle: 'koordinator', pinkode: '5555' },
 ];
@@ -35,7 +30,7 @@ const LUKKEOPGAVER = [
   'Plads lukket korrekt',
 ];
 
-const STORAGE_KEY = 'sitehub_bpo_dag_v3';
+const STORAGE_KEY = 'sitehub_bpo_modern_v1';
 
 // =====================
 // HJÆLPERE
@@ -52,12 +47,8 @@ function nyDag() {
     godkendtAf: null,
     lukkevagt: null,
     opgaver: [
-      ...ÅBNINGSOPGAVER.map(tekst => ({
-        id: uid(), tekst, kategori: 'Åbning', udført: false, udførtAf: [], tidspunkt: null
-      })),
-      ...LUKKEOPGAVER.map(tekst => ({
-        id: uid(), tekst, kategori: 'Lukkevagt', udført: false, udførtAf: [], tidspunkt: null
-      })),
+      ...ÅBNINGSOPGAVER.map(t => ({ id: uid(), tekst: t, kategori: 'Åbning', udført: false, udførtAf: [], tidspunkt: null })),
+      ...LUKKEOPGAVER.map(t => ({ id: uid(), tekst: t, kategori: 'Lukkevagt', udført: false, udførtAf: [], tidspunkt: null })),
     ],
   };
 }
@@ -70,20 +61,17 @@ export default function App() {
   const [pinkode, setPinkode] = useState('');
   const [bruger, setBruger] = useState(null);
   const [loginFejl, setLoginFejl] = useState('');
-
   const [dag, setDag] = useState(null);
   const [adhocTekst, setAdhocTekst] = useState('');
 
-  // Init dag
   useEffect(() => {
-    try {
-      const gemt = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!gemt || gemt.dato !== dagsDato()) throw new Error();
-      setDag(gemt);
-    } catch {
+    const gemt = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!gemt || gemt.dato !== dagsDato()) {
       const frisk = nyDag();
       setDag(frisk);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(frisk));
+    } else {
+      setDag(gemt);
     }
   }, []);
 
@@ -91,307 +79,143 @@ export default function App() {
     if (dag) localStorage.setItem(STORAGE_KEY, JSON.stringify(dag));
   }, [dag]);
 
-  // Login
   function logInd() {
     const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
-    if (!fundet) {
-      setLoginFejl('Forkert bruger eller pinkode');
-      return;
-    }
+    if (!fundet) return setLoginFejl('Forkert bruger eller pinkode');
     setBruger(fundet);
-    setPinkode('');
     setLoginFejl('');
   }
 
-  function logUd() {
-    setBruger(null);
-    setBrugerId('');
-    setPinkode('');
-  }
-
-  // Opgaver
-  function udførOpgave(opgaveId) {
+  function udførOpgave(id) {
     if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
-
     setDag(prev => ({
       ...prev,
-      opgaver: prev.opgaver.map(o => {
-        if (o.id !== opgaveId) return o;
-
-        // Lukkevagt-regel
-        if (o.kategori === 'Lukkevagt' && prev.lukkevagt && prev.lukkevagt !== bruger.navn) return o;
-
-        if (o.udført) return o;
-
-        return {
-          ...o,
-          udført: true,
-          udførtAf: [...o.udførtAf, { navn: bruger.navn, tid: nuTid() }],
-          tidspunkt: nuTid(),
-        };
-      }),
-      lukkevagt: prev.lukkevagt || (prev.opgaver.find(o => o.id === opgaveId)?.kategori === 'Lukkevagt' ? bruger.navn : prev.lukkevagt),
+      opgaver: prev.opgaver.map(o =>
+        o.id !== id || o.udført
+          ? o
+          : {
+              ...o,
+              udført: true,
+              udførtAf: [...o.udførtAf, { navn: bruger.navn, tid: nuTid() }],
+              tidspunkt: nuTid(),
+            }
+      ),
     }));
   }
 
   function tilføjAdhoc() {
-    if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
     if (!adhocTekst.trim()) return;
-
     setDag(prev => ({
       ...prev,
-      opgaver: [...prev.opgaver, {
-        id: uid(), tekst: adhocTekst.trim(), kategori: 'AD HOC', udført: false, udførtAf: [], tidspunkt: null
-      }]
+      opgaver: [...prev.opgaver, { id: uid(), tekst: adhocTekst, kategori: 'AD HOC', udført: false, udførtAf: [], tidspunkt: null }],
     }));
     setAdhocTekst('');
   }
 
-  const alleUdført = useMemo(() => dag?.opgaver.every(o => o.udført), [dag]);
+  const færdige = useMemo(() => dag?.opgaver.filter(o => o.udført).length || 0, [dag]);
 
-  function godkendDag() {
-    if (!bruger || bruger.rolle !== 'logistikchef' || !alleUdført) return;
-    setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
-  }
+  if (!dag)
+    return null;
 
-  if (!dag) return null;
-
-  // =====================
-  // RENDER (NEUTRAL / PROFESSIONEL UI)
-  // =====================
   return (
-  <div style={{
-    minHeight: '100vh',
-    background: '#f1f5f9',
-    padding: 16,
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont'
-  }}>
-    <div style={{ maxWidth: 480, margin: '0 auto' }}>
-
-      {/* HEADER */}
-      <header style={{
-        background: '#ffffff',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 16,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-      }}>
-        <h2 style={{ margin: 0 }}>SiteHub BPO – {SITE}</h2>
-        <div style={{ color: '#64748b', marginTop: 4 }}>
-          Dato: {dag.dato}
+    <div style={{ background: '#f4f6fb', minHeight: '100vh', fontFamily: 'Inter, system-ui' }}>
+      {/* TOPBAR */}
+      <div style={{ padding: 16, background: '#111827', color: 'white' }}>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>SiteHub · {SITE}</div>
+        <div style={{ fontSize: 13, opacity: 0.8 }}>{dag.dato}</div>
+        <div style={{ marginTop: 8, fontSize: 12 }}>
+          Status: {dag.godkendt ? '🔒 Godkendt' : færdige === dag.opgaver.length ? '🟢 Klar' : '🟡 I gang'}
         </div>
-      </header>
+        <div style={{ marginTop: 6, height: 6, background: '#374151', borderRadius: 4 }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${(færdige / dag.opgaver.length) * 100}%`,
+              background: '#10b981',
+              borderRadius: 4,
+            }}
+          />
+        </div>
+      </div>
 
       {/* LOGIN */}
       {!bruger && (
-        <section style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          padding: 16,
-          marginBottom: 16
-        }}>
-          <h3 style={{ marginBottom: 12 }}>Log ind</h3>
-
-          <select
-            value={brugerId}
-            onChange={e => setBrugerId(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 10,
-              border: '1px solid #cbd5f5',
-              marginBottom: 10
-            }}
-          >
-            <option value="">Vælg bruger</option>
-
-            <optgroup label="BPO’er">
-              {BRUGERE.filter(b => b.rolle === 'bpo').map(b => (
-                <option key={b.id} value={b.id}>{b.navn}</option>
+        <div style={{ padding: 16 }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: 16 }}>
+            <h3>Log ind</h3>
+            <select value={brugerId} onChange={e => setBrugerId(e.target.value)} style={inputStyle}>
+              <option value="">Vælg bruger</option>
+              {BRUGERE.map(b => (
+                <option key={b.id} value={b.id}>{b.navn} ({b.rolle})</option>
               ))}
-            </optgroup>
-
-            <optgroup label="Koordinatorer">
-              {BRUGERE.filter(b => b.rolle === 'koordinator').map(b => (
-                <option key={b.id} value={b.id}>{b.navn}</option>
-              ))}
-            </optgroup>
-
-            <optgroup label="Logistikchef">
-              {BRUGERE.filter(b => b.rolle === 'logistikchef').map(b => (
-                <option key={b.id} value={b.id}>{b.navn}</option>
-              ))}
-            </optgroup>
-          </select>
-
-          <input
-            type="password"
-            placeholder="Pinkode"
-            value={pinkode}
-            onChange={e => setPinkode(e.target.value)}
-            style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 10,
-              border: '1px solid #cbd5f5',
-              marginBottom: 12
-            }}
-          />
-
-          <button
-            onClick={logInd}
-            style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 10,
-              background: '#0f172a',
-              color: '#ffffff',
-              fontSize: 16,
-              border: 'none'
-            }}
-          >
-            Log ind
-          </button>
-
-          {loginFejl && (
-            <div style={{ color: '#dc2626', marginTop: 8 }}>
-              {loginFejl}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* BRUGER INFO */}
-      {bruger && (
-        <section style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 16,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div>
-            <strong>{bruger.navn}</strong><br />
-            <span style={{ color: '#64748b' }}>{bruger.rolle}</span>
+            </select>
+            <input type="password" placeholder="Pinkode" value={pinkode} onChange={e => setPinkode(e.target.value)} style={inputStyle} />
+            <button onClick={logInd} style={primaryBtn}>Log ind</button>
+            {loginFejl && <p style={{ color: 'red' }}>{loginFejl}</p>}
           </div>
-          <button onClick={logUd}>Log ud</button>
-        </section>
+        </div>
       )}
 
       {/* OPGAVER */}
-      {dag.opgaver.map(o => (
-        <div key={o.id} style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 10,
-          opacity: o.udført ? 0.6 : 1
-        }}>
-          <label style={{
-            display: 'flex',
-            gap: 10,
-            alignItems: 'flex-start'
-          }}>
-            <input
-              type="checkbox"
-              checked={o.udført}
-              disabled={!bruger || bruger.rolle !== 'bpo' || dag.godkendt}
-              onChange={() => udførOpgave(o.id)}
-              style={{ marginTop: 4 }}
-            />
-            <div>
-              <strong>{o.kategori}</strong>
-              <div>{o.tekst}</div>
+      {bruger && (
+        <div style={{ padding: 16 }}>
+          {dag.opgaver.map(o => (
+            <div key={o.id} style={{ background: o.udført ? '#ecfdf5' : 'white', borderRadius: 14, padding: 14, marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>{o.tekst}</strong>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>{o.kategori}</span>
+              </div>
+              {!o.udført && (
+                <button onClick={() => udførOpgave(o.id)} style={smallBtn}>Markér udført</button>
+              )}
+              {o.tidspunkt && (
+                <div style={{ fontSize: 12, marginTop: 6, color: '#065f46' }}>
+                  ✓ {o.udførtAf.map(u => u.navn).join(', ')} kl. {new Date(o.tidspunkt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
             </div>
-          </label>
+          ))}
 
-          {o.tidspunkt && (
-            <div style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: '#475569'
-            }}>
-              Udført af {o.udførtAf.map(u => u.navn).join(', ')} kl.
-              {' '}
-              {new Date(o.tidspunkt).toLocaleTimeString('da-DK', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
+          {/* AD HOC */}
+          {bruger.rolle === 'bpo' && (
+            <div style={{ background: 'white', borderRadius: 14, padding: 14 }}>
+              <h4>+ AD HOC-opgave</h4>
+              <input value={adhocTekst} onChange={e => setAdhocTekst(e.target.value)} style={inputStyle} placeholder="Skriv opgave…" />
+              <button onClick={tilføjAdhoc} style={primaryBtn}>Tilføj</button>
             </div>
           )}
         </div>
-      ))}
-
-      {/* AD HOC */}
-      {bruger?.rolle === 'bpo' && !dag.godkendt && (
-        <section style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          padding: 16,
-          marginTop: 16
-        }}>
-          <h4>AD HOC-opgave</h4>
-          <input
-            value={adhocTekst}
-            onChange={e => setAdhocTekst(e.target.value)}
-            placeholder="Skriv opgave…"
-            style={{
-              width: '100%',
-              padding: 14,
-              borderRadius: 10,
-              border: '1px solid #cbd5f5'
-            }}
-          />
-          <button
-            onClick={tilføjAdhoc}
-            style={{
-              marginTop: 10,
-              width: '100%',
-              padding: 14,
-              borderRadius: 10,
-              background: '#1e293b',
-              color: '#ffffff'
-            }}
-          >
-            Tilføj
-          </button>
-        </section>
-      )}
-
-      {/* GODKEND */}
-      {bruger?.rolle === 'logistikchef' && !dag.godkendt && (
-        <button
-          onClick={godkendDag}
-          disabled={!alleUdført}
-          style={{
-            marginTop: 20,
-            width: '100%',
-            padding: 16,
-            borderRadius: 12,
-            background: alleUdført ? '#047857' : '#94a3b8',
-            color: '#ffffff',
-            fontSize: 16
-          }}
-        >
-          Godkend dagen
-        </button>
-      )}
-
-      {dag.godkendt && (
-        <div style={{
-          marginTop: 20,
-          background: '#dcfce7',
-          padding: 16,
-          borderRadius: 12
-        }}>
-          <strong>Dagen er godkendt</strong><br />
-          Godkendt af {dag.godkendtAf?.navn}
-        </div>
       )}
     </div>
-  </div>
-);
   );
 }
+
+// =====================
+// STYLES
+// =====================
+const inputStyle = {
+  width: '100%',
+  padding: 14,
+  marginBottom: 10,
+  borderRadius: 12,
+  border: '1px solid #e5e7eb',
+};
+
+const primaryBtn = {
+  width: '100%',
+  padding: 14,
+  borderRadius: 12,
+  background: '#111827',
+  color: 'white',
+  fontWeight: 600,
+  border: 'none',
+};
+
+const smallBtn = {
+  marginTop: 10,
+  padding: '8px 12px',
+  borderRadius: 10,
+  background: '#2563eb',
+  color: 'white',
+  border: 'none',
+};
