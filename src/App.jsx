@@ -1,195 +1,209 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from "react";
 
 // =====================
 // KONFIGURATION
 // =====================
-const SITE = 'AG WS';
+const SITE = "AG WS";
 
-const BRUGERE = [
-  { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
-  { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
-  { id: 'william', navn: 'William', rolle: 'bpo', pinkode: '3333' },
-  { id: 'jon', navn: 'Jon', rolle: 'logistikchef', pinkode: '9999' },
-  { id: 'martin', navn: 'Martin', rolle: 'koordinator', pinkode: '4444' },
-  { id: 'catharina', navn: 'Catharina', rolle: 'koordinator', pinkode: '5555' },
+const MEDARBEJDERE = [
+  // BPO’er
+  { id: "oliver", navn: "Oliver", rolle: "bpo", pinkode: "1111" },
+  { id: "emil", navn: "Emil", rolle: "bpo", pinkode: "2222" },
+  { id: "william", navn: "William", rolle: "bpo", pinkode: "3333" },
+
+  // Koordinatorer
+  { id: "martin", navn: "Martin", rolle: "koordinator", pinkode: "4444" },
+  { id: "catharina", navn: "Catharina", rolle: "koordinator", pinkode: "5555" },
+
+  // Logistikchef
+  { id: "jon", navn: "Jon", rolle: "logistikchef", pinkode: "9999" },
 ];
 
-const ÅBNINGSOPGAVER = [
-  'Åbne arbejdstilladelse – husk sikkerhedskort',
-  'Tjek SiteHub-hegn',
-  'Registrér leverancer i Sitebooking',
-  'Rens skærm til fotogenkendelse',
-  'Billede af følgeseddel',
+const OPGAVER = [
+  { id: 1, type: "åbning", tekst: "Åbne arbejdstilladelse – husk sikkerhedskort" },
+  { id: 2, type: "åbning", tekst: "Tjek SiteHub-hegn" },
+  { id: 3, type: "åbning", tekst: "Registrér leverancer i Sitebooking" },
+  { id: 4, type: "åbning", tekst: "Rens skærm til fotogenkendelse" },
+  { id: 5, type: "åbning", tekst: "Billede af følgeseddel" },
+  { id: 6, type: "lukkevagt", tekst: "Tjek cigaretskodder" },
+  { id: 7, type: "lukkevagt", tekst: "Rens måtter" },
+  { id: 8, type: "lukkevagt", tekst: "Oprydning" },
+  { id: 9, type: "lukkevagt", tekst: "Luk porte og hegn" },
 ];
-
-const LUKKEOPGAVER = [
-  'Tjek cigaretskodder',
-  'Rens måtter',
-  'Oprydning',
-  'Luk porte og hegn',
-  'Plads lukket korrekt',
-];
-
-const STORAGE_KEY = 'sitehub_bpo_tailwind_v1';
-
-// =====================
-// HJÆLPERE
-// =====================
-const dagsDato = () => new Date().toISOString().slice(0, 10);
-const nuTid = () => new Date().toISOString();
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-function nyDag() {
-  return {
-    site: SITE,
-    dato: dagsDato(),
-    godkendt: false,
-    godkendtAf: null,
-    lukkevagt: null,
-    opgaver: [
-      ...ÅBNINGSOPGAVER.map(t => ({ id: uid(), tekst: t, kategori: 'Åbning', udført: false, udførtAf: [], tidspunkt: null })),
-      ...LUKKEOPGAVER.map(t => ({ id: uid(), tekst: t, kategori: 'Lukkevagt', udført: false, udførtAf: [], tidspunkt: null })),
-    ],
-  };
-}
 
 // =====================
 // APP
 // =====================
 export default function App() {
-  const [brugerId, setBrugerId] = useState('');
-  const [pinkode, setPinkode] = useState('');
+  const [brugerId, setBrugerId] = useState("");
+  const [pinkode, setPinkode] = useState("");
   const [bruger, setBruger] = useState(null);
-  const [loginFejl, setLoginFejl] = useState('');
-  const [dag, setDag] = useState(null);
-  const [adhocTekst, setAdhocTekst] = useState('');
+  const [fejl, setFejl] = useState("");
 
-  useEffect(() => {
-    try {
-      const gemt = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (!gemt || gemt.dato !== dagsDato()) throw new Error();
-      setDag(gemt);
-    } catch {
-      const frisk = nyDag();
-      setDag(frisk);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(frisk));
-    }
-  }, []);
+  const [udført, setUdført] = useState({});
+  const dato = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
-    if (dag) localStorage.setItem(STORAGE_KEY, JSON.stringify(dag));
-  }, [dag]);
-
+  // =====================
+  // LOGIN
+  // =====================
   function logInd() {
-    const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
+    const fundet = MEDARBEJDERE.find(
+      m => m.id === brugerId && m.pinkode === pinkode
+    );
+
     if (!fundet) {
-      setLoginFejl('Forkert bruger eller pinkode');
+      setFejl("Forkert bruger eller pinkode");
       return;
     }
+
     setBruger(fundet);
-    setPinkode('');
-    setLoginFejl('');
+    setPinkode("");
+    setFejl("");
   }
 
   function logUd() {
     setBruger(null);
-    setBrugerId('');
-    setPinkode('');
+    setBrugerId("");
+    setPinkode("");
+    setUdført({});
   }
 
-  function udførOpgave(id) {
-    if (!bruger || bruger.rolle !== 'bpo' || dag.godkendt) return;
+  // =====================
+  // OPGAVER
+  // =====================
+  function toggle(id) {
+    if (!bruger || bruger.rolle !== "bpo") return;
 
-    setDag(prev => ({
+    setUdført(prev => ({
       ...prev,
-      opgaver: prev.opgaver.map(o => {
-        if (o.id !== id || o.udført) return o;
-        if (o.kategori === 'Lukkevagt' && prev.lukkevagt && prev.lukkevagt !== bruger.navn) return o;
-        return { ...o, udført: true, tidspunkt: nuTid(), udførtAf: [{ navn: bruger.navn, tid: nuTid() }] };
-      }),
-      lukkevagt: prev.lukkevagt || (prev.opgaver.find(o => o.id === id)?.kategori === 'Lukkevagt' ? bruger.navn : prev.lukkevagt),
+      [id]: prev[id]
+        ? null
+        : {
+            navn: bruger.navn,
+            rolle: bruger.rolle,
+            tid: new Date().toLocaleTimeString("da-DK", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          },
     }));
   }
-
-  function tilføjAdhoc() {
-    if (!adhocTekst.trim() || !bruger || bruger.rolle !== 'bpo') return;
-    setDag(prev => ({
-      ...prev,
-      opgaver: [...prev.opgaver, { id: uid(), tekst: adhocTekst, kategori: 'AD HOC', udført: false, udførtAf: [], tidspunkt: null }],
-    }));
-    setAdhocTekst('');
-  }
-
-  const alleUdført = useMemo(() => dag?.opgaver.every(o => o.udført), [dag]);
-
-  function godkendDag() {
-    if (bruger?.rolle !== 'logistikchef' || !alleUdført) return;
-    setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: nuTid() } }));
-  }
-
-  if (!dag) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 px-4 py-6">
-      <div className="max-w-xl mx-auto space-y-4">
-        <header className="bg-white rounded-xl p-4 shadow">
-          <h1 className="text-xl font-bold">SiteHub BPO – {SITE}</h1>
-          <p className="text-sm text-gray-500">Dato: {dag.dato}</p>
-          {bruger && <p className="mt-1 text-sm">Logget ind: <strong>{bruger.navn}</strong> ({bruger.rolle})</p>}
-        </header>
-
-        {!bruger && (
-          <section className="bg-white rounded-xl p-4 shadow space-y-3">
-            <h2 className="font-semibold">Log ind</h2>
-            <select className="w-full p-3 rounded-lg border" value={brugerId} onChange={e => setBrugerId(e.target.value)}>
-              <option value="">Vælg bruger</option>
-              {BRUGERE.map(b => <option key={b.id} value={b.id}>{b.navn} ({b.rolle})</option>)}
-            </select>
-            <input type="password" className="w-full p-3 rounded-lg border" placeholder="Pinkode" value={pinkode} onChange={e => setPinkode(e.target.value)} />
-            <button onClick={logInd} className="w-full py-3 rounded-lg bg-black text-white">Log ind</button>
-            {loginFejl && <p className="text-red-600 text-sm">{loginFejl}</p>}
-          </section>
-        )}
-
+    <div className="min-h-screen bg-gray-100 text-gray-900">
+      {/* HEADER */}
+      <header className="sticky top-0 z-10 bg-white shadow px-4 py-3">
+        <h1 className="text-xl font-bold">SiteHub BPO – {SITE}</h1>
+        <p className="text-sm text-gray-500">Dato: {dato}</p>
         {bruger && (
-          <button onClick={logUd} className="text-sm underline">Log ud</button>
+          <p className="text-sm mt-1">
+            Logget ind: <strong>{bruger.navn}</strong> ({bruger.rolle})
+          </p>
         )}
+      </header>
 
-        {dag.opgaver.map(o => (
-          <div key={o.id} className={`rounded-xl p-4 shadow bg-white ${o.udført ? 'opacity-70' : ''}`}>
-            <div className="flex justify-between items-center">
-              <div>
-                <span className="text-xs font-semibold uppercase text-blue-600">{o.kategori}</span>
-                <p className="font-medium">{o.tekst}</p>
-              </div>
-              {bruger?.rolle === 'bpo' && !o.udført && (
-                <button onClick={() => udførOpgave(o.id)} className="px-4 py-2 bg-green-600 text-white rounded-lg">Udført</button>
-              )}
-            </div>
-            {o.tidspunkt && (
-              <p className="text-xs text-gray-500 mt-2">Udført af {o.udførtAf[0]?.navn} kl. {new Date(o.tidspunkt).toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })}</p>
-            )}
-          </div>
-        ))}
+      <main className="p-4 space-y-4">
+        {/* LOGIN */}
+        {!bruger && (
+          <section className="bg-white rounded-xl shadow p-4 space-y-3">
+            <h2 className="font-semibold text-lg">Log ind</h2>
 
-        {bruger?.rolle === 'bpo' && (
-          <section className="bg-white rounded-xl p-4 shadow space-y-2">
-            <h3 className="font-semibold">AD HOC-opgave</h3>
-            <input value={adhocTekst} onChange={e => setAdhocTekst(e.target.value)} className="w-full p-3 rounded-lg border" placeholder="Skriv opgave…" />
-            <button onClick={tilføjAdhoc} className="w-full py-3 bg-blue-600 text-white rounded-lg">Tilføj</button>
+            <select
+              value={brugerId}
+              onChange={e => setBrugerId(e.target.value)}
+              className="w-full p-3 rounded-lg border"
+            >
+              <option value="">Vælg medarbejder</option>
+              <optgroup label="BPO’er">
+                {MEDARBEJDERE.filter(m => m.rolle === "bpo").map(m => (
+                  <option key={m.id} value={m.id}>{m.navn}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Koordinatorer">
+                {MEDARBEJDERE.filter(m => m.rolle === "koordinator").map(m => (
+                  <option key={m.id} value={m.id}>{m.navn}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Logistikchef">
+                {MEDARBEJDERE.filter(m => m.rolle === "logistikchef").map(m => (
+                  <option key={m.id} value={m.id}>{m.navn}</option>
+                ))}
+              </optgroup>
+            </select>
+
+            <input
+              type="password"
+              placeholder="Pinkode"
+              value={pinkode}
+              onChange={e => setPinkode(e.target.value)}
+              className="w-full p-3 rounded-lg border"
+            />
+
+            <button
+              onClick={logInd}
+              className="w-full bg-black text-white py-3 rounded-lg"
+            >
+              Log ind
+            </button>
+
+            {fejl && <p className="text-red-600 text-sm">{fejl}</p>}
           </section>
         )}
 
-        {bruger?.rolle === 'logistikchef' && !dag.godkendt && (
-          <button onClick={godkendDag} disabled={!alleUdført} className="w-full py-4 bg-emerald-700 text-white rounded-xl disabled:opacity-50">Godkend dagen</button>
-        )}
+        {/* OPGAVER */}
+        {bruger && (
+          <>
+            {OPGAVER.map(opg => {
+              const done = udført[opg.id];
+              return (
+                <div
+                  key={opg.id}
+                  className={`rounded-xl p-4 shadow bg-white border-l-4 ${
+                    opg.type === "åbning"
+                      ? "border-blue-500"
+                      : "border-orange-500"
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-xs uppercase font-semibold text-gray-500">
+                        {opg.type}
+                      </span>
+                      <p className="font-medium mt-1">{opg.tekst}</p>
+                    </div>
 
-        {dag.godkendt && (
-          <div className="bg-emerald-100 p-4 rounded-xl text-sm">
-            Dagen er godkendt af {dag.godkendtAf?.navn}
-          </div>
+                    {bruger.rolle === "bpo" && (
+                      <button
+                        onClick={() => toggle(opg.id)}
+                        className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${
+                          done
+                            ? "bg-green-500 border-green-500 text-white"
+                            : "border-gray-300"
+                        }`}
+                      >
+                        ✓
+                      </button>
+                    )}
+                  </div>
+
+                  {done && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      Udført af {done.navn} ({done.rolle}) kl. {done.tid}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+
+            <button
+              onClick={logUd}
+              className="w-full mt-6 bg-gray-200 py-3 rounded-lg"
+            >
+              Log ud
+            </button>
+          </>
         )}
-      </div>
+      </main>
     </div>
   );
 }
