@@ -70,7 +70,7 @@ export default function App() {
   const [pinkode, setPinkode] = useState('');
   const [bruger, setBruger] = useState(null);
   const [loginFejl, setLoginFejl] = useState('');
-
+  const [valgtRolle, setValgtRolle] = useState('');
   const [dag, setDag] = useState(null);
   const [adhocTekst, setAdhocTekst] = useState('');
 
