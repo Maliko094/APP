@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 // =====================
 const SITE = 'AG WS';
 
-const BRUGERE = [ 
+const BRUGERE = [
   // BPO’er
   { id: 'oliver', navn: 'Oliver', rolle: 'bpo', pinkode: '1111' },
   { id: 'emil', navn: 'Emil', rolle: 'bpo', pinkode: '2222' },
@@ -179,7 +179,21 @@ export default function App() {
             <h3>Log ind</h3>
             <select value={brugerId} onChange={e => setBrugerId(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }}>
               <option value="">Vælg bruger</option>
-              {BRUGERE.map(b => <option key={b.id} value={b.id}>{b.navn}</option>)}
+              <optgroup label="BPO’er">
+                {BRUGERE.filter(b => b.rolle === 'bpo').map(b => (
+                  <option key={b.id} value={b.id}>{b.navn}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Koordinatorer">
+                {BRUGERE.filter(b => b.rolle === 'koordinator').map(b => (
+                  <option key={b.id} value={b.id}>{b.navn}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Logistikchef">
+                {BRUGERE.filter(b => b.rolle === 'logistikchef').map(b => (
+                  <option key={b.id} value={b.id}>{b.navn}</option>
+                ))}
+              </optgroup>
             </select>
             <input type="password" placeholder="Pinkode" value={pinkode} onChange={e => setPinkode(e.target.value)} style={{ width: '100%', padding: 10, marginBottom: 10 }} />
             <button onClick={logInd} style={{ width: '100%', padding: 12, background: '#111827', color: '#fff', borderRadius: 6 }}>Log ind</button>
