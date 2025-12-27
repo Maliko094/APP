@@ -1,80 +1,62 @@
 import { useEffect, useMemo, useState } from "react";
 
-/* =====================
+/* ============================
    KONFIGURATION
-===================== */
+============================ */
 const SITE = "AG WS";
 
 const BRUGERE = [
-  { id: "oliver", navn: "Oliver", rolle: "BPO", pinkode: "1111" },
-  { id: "emil", navn: "Emil", rolle: "BPO", pinkode: "2222" },
-  { id: "william", navn: "William", rolle: "BPO", pinkode: "3333" },
+  { id: "oliver", navn: "Oliver", rolle: "bpo", pinkode: "1111" },
+  { id: "emil", navn: "Emil", rolle: "bpo", pinkode: "2222" },
+  { id: "william", navn: "William", rolle: "bpo", pinkode: "3333" },
 
-  { id: "martin", navn: "Martin", rolle: "Koordinator", pinkode: "4444" },
-  { id: "catharina", navn: "Catharina", rolle: "Koordinator", pinkode: "5555" },
+  { id: "jon", navn: "Jon", rolle: "logistikchef", pinkode: "9999" },
 
-  { id: "jon", navn: "Jon", rolle: "Logistikchef", pinkode: "9999" },
+  { id: "martin", navn: "Martin", rolle: "koordinator", pinkode: "4444" },
+  { id: "catharina", navn: "Catharina", rolle: "koordinator", pinkode: "5555" },
 ];
 
-const ÅBNING = [
-  "Åbne arbejdstilladelse – husk sikkerhedskort",
-  "Tjek SiteHub-hegn",
-  "Registrér leverancer i Sitebooking",
-  "Rens skærm til fotogenkendelse",
-  "Billede af følgeseddel",
+const STANDARD_OPGAVER = [
+  "Arbejdstilladelse – husk sikkerhedskort",
+  "Tjek alle SiteHub-hegn for skader (inkl. jordvolden)",
+  "Registrér leverancer i Sitebooking (billeder af nr.plade og følgeseddel)",
+  "Kontrollér spand med cigaretskodder",
+  "Ryst / rens spaghettimåtter",
+  "Rens skærme til fotogenkendelse",
+  "Tjek alle SiteHub-hegn for skader",
+  "Skriv besked på Slack ved akutte beskeder",
+  "Lås container S2 ved fyraften",
+  "Suspendér arbejdstilladelse – ring 30750246",
 ];
 
-const LUK = [
-  "Tjek cigaretskodder",
-  "Rens måtter",
-  "Oprydning",
-  "Luk porte og hegn",
-  "Plads lukket korrekt",
-];
+const STORAGE = "sitehub_bpo_prod_v1";
 
-const STORAGE = "sitehub_bpo_v4";
-
-/* =====================
+/* ============================
    HJÆLPERE
-===================== */
-const iDag = () => new Date().toISOString().slice(0, 10);
-const nu = () => new Date();
-const uid = () => Math.random().toString(36).slice(2, 9);
+============================ */
+const today = () => new Date().toISOString().slice(0, 10);
+const now = () => new Date().toISOString();
+const uid = () => Math.random().toString(36).slice(2, 10);
 
-/* =====================
-   NY DAG
-===================== */
 function nyDag() {
   return {
     site: SITE,
-    dato: iDag(),
-    lukkevagt: null,
+    dato: today(),
     godkendt: false,
     godkendtAf: null,
-    opgaver: [
-      ...ÅBNING.map(t => ({
-        id: uid(),
-        tekst: t,
-        type: "Åbning",
-        udført: false,
-        udførtAf: null,
-        tid: null,
-      })),
-      ...LUK.map(t => ({
-        id: uid(),
-        tekst: t,
-        type: "Lukkevagt",
-        udført: false,
-        udførtAf: null,
-        tid: null,
-      })),
-    ],
+    opgaver: STANDARD_OPGAVER.map((t) => ({
+      id: uid(),
+      tekst: t,
+      udført: false,
+      udførtAf: [],
+      tidspunkt: null,
+    })),
   };
 }
 
-/* =====================
+/* ============================
    APP
-===================== */
+============================ */
 export default function App() {
   const [brugerId, setBrugerId] = useState("");
   const [pinkode, setPinkode] = useState("");
@@ -84,14 +66,16 @@ export default function App() {
   const [dag, setDag] = useState(null);
   const [adhoc, setAdhoc] = useState("");
 
-  /* Init */
+  /* Init dag */
   useEffect(() => {
-    const gemt = JSON.parse(localStorage.getItem(STORAGE));
-    if (gemt && gemt.dato === iDag()) setDag(gemt);
-    else {
-      const d = nyDag();
-      setDag(d);
-      localStorage.setItem(STORAGE, JSON.stringify(d));
+    try {
+      const gemt = JSON.parse(localStorage.getItem(STORAGE));
+      if (!gemt || gemt.dato !== today()) throw 0;
+      setDag(gemt);
+    } catch {
+      const frisk = nyDag();
+      setDag(frisk);
+      localStorage.setItem(STORAGE, JSON.stringify(frisk));
     }
   }, []);
 
@@ -99,18 +83,14 @@ export default function App() {
     if (dag) localStorage.setItem(STORAGE, JSON.stringify(dag));
   }, [dag]);
 
-  /* Login */
   function logInd() {
-    const u = BRUGERE.find(
-      b => b.id === brugerId && b.pinkode === pinkode
+    const fundet = BRUGERE.find(
+      (b) => b.id === brugerId && b.pinkode === pinkode
     );
-    if (!u) {
-      setFejl("Forkert bruger eller pinkode");
-      return;
-    }
-    setBruger(u);
-    setPinkode("");
+    if (!fundet) return setFejl("Forkert bruger eller pinkode");
+    setBruger(fundet);
     setFejl("");
+    setPinkode("");
   }
 
   function logUd() {
@@ -119,53 +99,35 @@ export default function App() {
     setPinkode("");
   }
 
-  /* Opgaver */
-  function toggleOpgave(id) {
-    if (!bruger || bruger.rolle !== "BPO" || dag.godkendt) return;
-
-    setDag(prev => ({
+  function udfør(id) {
+    if (!bruger || bruger.rolle !== "bpo" || dag.godkendt) return;
+    setDag((prev) => ({
       ...prev,
-      opgaver: prev.opgaver.map(o => {
-        if (o.id !== id || o.udført) return o;
-
-        if (
-          o.type === "Lukkevagt" &&
-          prev.lukkevagt &&
-          prev.lukkevagt !== bruger.navn
-        )
-          return o;
-
-        return {
-          ...o,
-          udført: true,
-          udførtAf: bruger.navn,
-          tid: nu().toLocaleTimeString("da-DK", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        };
-      }),
-      lukkevagt:
-        prev.lukkevagt ||
-        (prev.opgaver.find(o => o.id === id)?.type === "Lukkevagt"
-          ? bruger.navn
-          : prev.lukkevagt),
+      opgaver: prev.opgaver.map((o) =>
+        o.id !== id || o.udført
+          ? o
+          : {
+              ...o,
+              udført: true,
+              tidspunkt: now(),
+              udførtAf: [...o.udførtAf, { navn: bruger.navn, tid: now() }],
+            }
+      ),
     }));
   }
 
   function tilføjAdhoc() {
-    if (!adhoc.trim() || bruger?.rolle !== "BPO") return;
-    setDag(prev => ({
+    if (!adhoc.trim() || dag.godkendt || bruger?.rolle !== "bpo") return;
+    setDag((prev) => ({
       ...prev,
       opgaver: [
         ...prev.opgaver,
         {
           id: uid(),
-          tekst: adhoc,
-          type: "AD HOC",
+          tekst: "AD HOC: " + adhoc,
           udført: false,
-          udførtAf: null,
-          tid: null,
+          udførtAf: [],
+          tidspunkt: null,
         },
       ],
     }));
@@ -173,150 +135,158 @@ export default function App() {
   }
 
   const alleUdført = useMemo(
-    () => dag?.opgaver.every(o => o.udført),
+    () => dag?.opgaver.every((o) => o.udført),
     [dag]
   );
 
-  function godkendDag() {
-    if (bruger?.rolle !== "Logistikchef" || !alleUdført) return;
-    setDag(prev => ({
+  function godkend() {
+    if (bruger?.rolle !== "logistikchef" || !alleUdført) return;
+    setDag((prev) => ({
       ...prev,
       godkendt: true,
-      godkendtAf: bruger.navn,
+      godkendtAf: { navn: bruger.navn, tid: now() },
     }));
   }
 
   if (!dag) return null;
 
-  /* =====================
+  /* ============================
      UI
-  ===================== */
+============================ */
   return (
-    <div style={{ minHeight: "100vh", background: "#f1f5f9" }}>
-      {/* HEADER */}
-      <header style={{
-        position: "sticky",
-        top: 0,
-        background: "#0f172a",
-        color: "#fff",
-        padding: 16,
-        zIndex: 10,
-      }}>
-        <h2 style={{ margin: 0 }}>SiteHub BPO – {SITE}</h2>
-        <small>Dato: {dag.dato}</small>
-      </header>
+    <div style={{ background: "#f3f4f6", minHeight: "100vh", padding: 16 }}>
+      <div style={{ maxWidth: 700, margin: "0 auto" }}>
+        <h2>SiteHub BPO – {SITE}</h2>
+        <p>Dato: {dag.dato}</p>
 
-      <main style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-        {/* LOGIN */}
-        {!bruger && (
-          <div className="card">
+        {!bruger ? (
+          <div style={{ background: "#fff", padding: 16, borderRadius: 10 }}>
             <h3>Log ind</h3>
-            <select value={brugerId} onChange={e => setBrugerId(e.target.value)}>
+            <select
+              value={brugerId}
+              onChange={(e) => setBrugerId(e.target.value)}
+              style={{ width: "100%", padding: 12, marginBottom: 10 }}
+            >
               <option value="">Vælg bruger</option>
-              {BRUGERE.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.navn} ({b.rolle})
-                </option>
-              ))}
+              <optgroup label="BPO’er">
+                {BRUGERE.filter((b) => b.rolle === "bpo").map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.navn}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Koordinatorer">
+                {BRUGERE.filter((b) => b.rolle === "koordinator").map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.navn}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Logistikchef">
+                {BRUGERE.filter((b) => b.rolle === "logistikchef").map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.navn}
+                  </option>
+                ))}
+              </optgroup>
             </select>
+
             <input
               type="password"
               placeholder="Pinkode"
               value={pinkode}
-              onChange={e => setPinkode(e.target.value)}
+              onChange={(e) => setPinkode(e.target.value)}
+              style={{ width: "100%", padding: 12 }}
             />
-            <button onClick={logInd}>Log ind</button>
+
+            <button
+              onClick={logInd}
+              style={{
+                width: "100%",
+                padding: 14,
+                marginTop: 10,
+                background: "#111",
+                color: "#fff",
+                borderRadius: 8,
+              }}
+            >
+              Log ind
+            </button>
             {fejl && <p style={{ color: "red" }}>{fejl}</p>}
           </div>
+        ) : (
+          <p>
+            Logget ind som <strong>{bruger.navn}</strong> ({bruger.rolle}){" "}
+            <button onClick={logUd}>Log ud</button>
+          </p>
         )}
 
-        {/* BRUGERINFO */}
-        {bruger && (
-          <div className="card">
-            <strong>{bruger.navn}</strong> – {bruger.rolle}
-            <button onClick={logUd} style={{ float: "right" }}>
-              Log ud
-            </button>
-          </div>
-        )}
-
-        {/* OPGAVER */}
-        {dag.opgaver.map(o => (
-          <div key={o.id} className="card">
+        {dag.opgaver.map((o) => (
+          <div
+            key={o.id}
+            style={{
+              background: "#fff",
+              padding: 12,
+              marginTop: 8,
+              borderRadius: 8,
+            }}
+          >
             <label>
               <input
                 type="checkbox"
                 checked={o.udført}
-                disabled={bruger?.rolle !== "BPO" || dag.godkendt}
-                onChange={() => toggleOpgave(o.id)}
+                disabled={!bruger || dag.godkendt || bruger.rolle !== "bpo"}
+                onChange={() => udfør(o.id)}
               />{" "}
-              <b>[{o.type}]</b> {o.tekst}
+              {o.tekst}
             </label>
-            {o.udført && (
-              <div className="meta">
-                Udført af {o.udførtAf} kl. {o.tid}
+            {o.tidspunkt && (
+              <div style={{ fontSize: 12, color: "#555" }}>
+                Udført af {o.udførtAf.map((u) => u.navn).join(", ")} kl.{" "}
+                {new Date(o.tidspunkt).toLocaleTimeString("da-DK")}
               </div>
             )}
           </div>
         ))}
 
-        {/* AD HOC */}
-        {bruger?.rolle === "BPO" && !dag.godkendt && (
-          <div className="card">
-            <h4>AD HOC-opgave</h4>
+        {bruger?.rolle === "bpo" && !dag.godkendt && (
+          <div style={{ marginTop: 16 }}>
             <input
               value={adhoc}
-              onChange={e => setAdhoc(e.target.value)}
-              placeholder="Skriv opgave…"
+              onChange={(e) => setAdhoc(e.target.value)}
+              placeholder="Ny AD HOC opgave"
+              style={{ width: "100%", padding: 12 }}
             />
-            <button onClick={tilføjAdhoc}>Tilføj</button>
+            <button onClick={tilføjAdhoc} style={{ width: "100%", marginTop: 8 }}>
+              Tilføj
+            </button>
           </div>
         )}
 
-        {/* GODKEND */}
-        {bruger?.rolle === "Logistikchef" && !dag.godkendt && (
+        {bruger?.rolle === "logistikchef" && !dag.godkendt && (
           <button
-            onClick={godkendDag}
             disabled={!alleUdført}
-            style={{ width: "100%", padding: 16 }}
+            onClick={godkend}
+            style={{
+              marginTop: 16,
+              width: "100%",
+              padding: 16,
+              background: "#065f46",
+              color: "#fff",
+              borderRadius: 10,
+            }}
           >
             Godkend dagen
           </button>
         )}
 
         {dag.godkendt && (
-          <div className="card" style={{ background: "#dcfce7" }}>
-            Dagen er godkendt af <b>{dag.godkendtAf}</b>
+          <div style={{ marginTop: 20, background: "#ecfdf5", padding: 16 }}>
+            Godkendt af {dag.godkendtAf.navn} kl.{" "}
+            {new Date(dag.godkendtAf.tid).toLocaleTimeString("da-DK")}
           </div>
         )}
-      </main>
-
-      <style>{`
-        .card {
-          background: #fff;
-          border-radius: 12px;
-          padding: 14px;
-          margin-bottom: 12px;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-        }
-        input, select, button {
-          width: 100%;
-          padding: 12px;
-          margin-top: 8px;
-          border-radius: 10px;
-          border: 1px solid #cbd5f5;
-        }
-        button {
-          background: #0f172a;
-          color: white;
-          font-weight: 600;
-        }
-        .meta {
-          margin-top: 6px;
-          font-size: 12px;
-          color: #475569;
-        }
-      `}</style>
+      </div>
     </div>
   );
-} 
+}
