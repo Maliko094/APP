@@ -1,7 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-body {
-  font-family: system-ui, sans-serif;
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx}"
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
 }
