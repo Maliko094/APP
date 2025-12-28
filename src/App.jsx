@@ -1,44 +1,44 @@
 import { useEffect, useMemo, useState } from "react";
 
-/* =========================
+/* ================================
    KONFIGURATION
-========================= */
+================================ */
 
 const SITE = "AG WS";
-const STORAGE = "sitehub_ag_ws_v1";
+const STORAGE = "sitehub_ag_ws_full";
 
 const USERS = [
   { id: "oliver", name: "Oliver De Morais Andersen", role: "bpo", pin: "andersen" },
   { id: "william", name: "William Garn Snedker Pedersen", role: "bpo", pin: "pedersen" },
   { id: "emil", name: "Emil Gothart", role: "bpo", pin: "gothart" },
 
+  { id: "martin", name: "Martin Pajesø", role: "koordinator", pin: "pajesø" },
   { id: "catharina", name: "Catharina Andersen", role: "koordinator", pin: "andersen" },
   { id: "hanne", name: "Hanne Brobæk Jensen", role: "koordinator", pin: "jensen" },
-  { id: "martin", name: "Martin Pajesø", role: "koordinator", pin: "pajesø" },
 
   { id: "john", name: "John Storm", role: "logistikchef", pin: "storm" },
-  { id: "marie", name: "Marie Grand", role: "logistikchef", pin: "grand" },
+  { id: "marie", name: "Marie Grand", role: "logistikchef", pin: "grand" }
 ];
 
 const BASE_TASKS = [
   "Arbejdstilladelse – husk sikkerhedskort",
-  "Tjek alle SiteHub-hegn for skader (inkl. jordvolden)",
-  "Registrér leverancer i Sitebooking (billeder af nr.plade og følgeseddel)",
-  "Kontrollér spand med cigaretskodder",
-  "Ryst / rens spaghettimåtter",
-  "Rens skærme til fotogenkendelse",
-  "Tjek alle SiteHub-hegn for skader",
-  "Skriv besked på Slack ved akutte beskeder",
-  "Lås container S2 ved fyraften",
-  "Suspendér arbejdstilladelse – ring 30750246",
+  "Tjek SiteHub-hegn",
+  "Registrér leverancer i Sitebooking",
+  "Rens fotogenkendelses-skærme",
+  "Billede af følgeseddel",
+  "Rens spaghettimåtter",
+  "Tjek cigaretskodder",
+  "Oprydning",
+  "Lås container S2",
+  "Suspendér arbejdstilladelse"
 ];
 
-/* =========================
+/* ================================
    HJÆLPERE
-========================= */
+================================ */
 
 const today = () => new Date().toISOString().slice(0, 10);
-const now = () => new Date().toISOString();
+const now = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 function makeDay(date) {
@@ -49,9 +49,9 @@ function makeDay(date) {
   };
 }
 
-/* =========================
+/* ================================
    APP
-========================= */
+================================ */
 
 export default function App() {
   const [db, setDb] = useState({});
@@ -77,65 +77,66 @@ export default function App() {
   const isChef = user && user.role === "logistikchef";
 
   function login() {
-    const u = USERS.find(
-      u => u.id === userId && u.pin.toLowerCase() === pin.toLowerCase().trim()
-    );
+    const u = USERS.find(u => u.id === userId && u.pin === pin.toLowerCase().trim());
     if (!u) return alert("Forkert login");
     setUser(u);
-    setView(u.role === "logistikchef" ? "dashboard" : "start");
+    setView("start");
     setPin("");
   }
 
   function toggleTask(task) {
     if (!canWork) return;
 
-    const exists = task.checks.find(c => c.user === user.name);
+    const mine = task.checks.find(c => c.user === user.name);
     let newChecks;
 
-    if (exists) {
+    if (mine) {
       if (user.role === "bpo") {
         newChecks = task.checks.filter(c => c.user !== user.name);
-      } else {
-        newChecks = [];
-      }
+        log(`${user.name} fjernede: ${task.text}`);
+      } else return;
     } else {
       newChecks = [...task.checks, { user: user.name, time: now() }];
+      log(`${user.name} udførte: ${task.text}`);
     }
 
+    updateTasks(task.id, newChecks);
+  }
+
+  function updateTasks(id, checks) {
     const updated = {
       ...day,
-      tasks: day.tasks.map(t => t.id === task.id ? { ...t, checks: newChecks } : t),
-      log: [...day.log, `${user.name} ændrede: ${task.text}`]
+      tasks: day.tasks.map(t => t.id === id ? { ...t, checks } : t)
     };
-
     setDb(prev => ({ ...prev, [date]: updated }));
+  }
+
+  function log(text) {
+    setDb(prev => ({
+      ...prev,
+      [date]: { ...day, log: [...day.log, { time: now(), text }] }
+    }));
   }
 
   function addAdhoc() {
     if (!canWork || !adhoc.trim()) return;
-
-    const updated = {
-      ...day,
-      tasks: [...day.tasks, { id: uid(), text: adhoc, checks: [] }],
-      log: [...day.log, `${user.name} tilføjede AD-HOC: ${adhoc}`]
-    };
-
-    setDb(prev => ({ ...prev, [date]: updated }));
+    const t = { id: uid(), text: "AD HOC: " + adhoc, checks: [] };
+    setDb(prev => ({
+      ...prev,
+      [date]: { ...day, tasks: [...day.tasks, t], log: [...day.log, { time: now(), text: `${user.name} tilføjede ${t.text}` }] }
+    }));
     setAdhoc("");
   }
 
-  const total = day.tasks.length;
-  const done = day.tasks.filter(t => t.checks.length > 0).length;
-  const percent = Math.round((done / total) * 100);
-  const color = percent === 100 ? "bg-green-200" : percent >= 80 ? "bg-yellow-200" : "bg-red-200";
+  const leaderboard = useMemo(() => {
+    const c = {};
+    day.tasks.forEach(t => t.checks.forEach(ch => {
+      c[ch.user] = (c[ch.user] || 0) + 1;
+    }));
+    return Object.entries(c).sort((a,b) => b[1] - a[1]);
+  }, [day]);
 
-  const leaderboard = {};
-  day.tasks.forEach(t => t.checks.forEach(c => {
-    leaderboard[c.user] = (leaderboard[c.user] || 0) + 1;
-  }));
-
-  const leaderboardList = Object.entries(leaderboard).sort((a, b) => b[1] - a[1]);
-  const missing = day.tasks.filter(t => t.checks.length === 0);
+  const percent = Math.round((day.tasks.filter(t => t.checks.length > 0).length / day.tasks.length) * 100);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
@@ -150,35 +151,32 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl shadow space-y-2">
             <select value={userId} onChange={e => setUserId(e.target.value)} className="w-full border p-2 rounded">
               <option value="">Vælg bruger</option>
-              {USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {USERS.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
             </select>
             <input value={pin} onChange={e => setPin(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
             <button onClick={login} className="w-full bg-black text-white p-3 rounded">Log ind</button>
           </div>
         ) : (
           <>
-            {user.role !== "logistikchef" && (
-              <div className="flex gap-2">
-                <button onClick={() => setView("start")} className={`flex-1 p-2 rounded ${view === "start" ? "bg-black text-white" : "bg-gray-200"}`}>Start</button>
-                <button onClick={() => setView("tjekliste")} className={`flex-1 p-2 rounded ${view === "tjekliste" ? "bg-black text-white" : "bg-gray-200"}`}>Tjekliste</button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button onClick={() => setView("start")} className={`flex-1 p-2 rounded ${view==="start"?"bg-black text-white":"bg-gray-200"}`}>Start</button>
+              <button onClick={() => setView("list")} className={`flex-1 p-2 rounded ${view==="list"?"bg-black text-white":"bg-gray-200"}`}>Tjekliste</button>
+              {isChef && <button onClick={() => setView("dash")} className={`flex-1 p-2 rounded ${view==="dash"?"bg-black text-white":"bg-gray-200"}`}>Dashboard</button>}
+            </div>
 
             {view === "start" && (
-              <div className={`p-4 rounded-xl shadow ${color}`}>
+              <div className="bg-white p-4 rounded-xl shadow">
                 <h2 className="text-lg font-bold">Godmorgen {user.name.split(" ")[0]}</h2>
-                <div>Status: {done}/{total} ({percent}%)</div>
-                <div className="mt-2 font-bold">Leaderboard</div>
-                {leaderboardList.map(([n, c], i) => <div key={n}>{i + 1}. {n} – {c}</div>)}
-                <div className="mt-2 font-bold">Mangler</div>
-                {missing.map(t => <div key={t.id}>{t.text}</div>)}
+                <p>Status: {percent}%</p>
+                <h3 className="mt-2 font-bold">🏆 Leaderboard</h3>
+                {leaderboard.map((l,i)=><div key={i}>{i+1}. {l[0]} – {l[1]}</div>)}
               </div>
             )}
 
-            {view === "tjekliste" && day.tasks.map(t => {
+            {view === "list" && day.tasks.map(t => {
               const mine = t.checks.some(c => c.user === user.name);
               return (
-                <div key={t.id} onClick={() => toggleTask(t)} className={`bg-white p-3 rounded-xl shadow cursor-pointer ${mine ? "line-through text-gray-400" : ""}`}>
+                <div key={t.id} onClick={() => toggleTask(t)} className={`p-3 rounded-xl bg-white shadow ${mine?"line-through text-gray-400":""}`}>
                   {t.text}
                 </div>
               );
@@ -186,18 +184,17 @@ export default function App() {
 
             {canWork && (
               <div className="bg-white p-4 rounded-xl shadow">
-                <input value={adhoc} onChange={e => setAdhoc(e.target.value)} placeholder="AD-HOC opgave" className="w-full border p-2 rounded" />
-                <button onClick={addAdhoc} className="w-full bg-gray-800 text-white p-2 mt-2 rounded">Tilføj</button>
+                <input value={adhoc} onChange={e => setAdhoc(e.target.value)} placeholder="AD-HOC" className="w-full border p-2 rounded" />
+                <button onClick={addAdhoc} className="w-full mt-2 bg-gray-800 text-white p-2 rounded">Tilføj</button>
               </div>
             )}
 
-            {isChef && (
+            {view === "dash" && isChef && (
               <div className="bg-white p-4 rounded-xl shadow">
-                <h3 className="font-bold">Dashboard</h3>
-                <div className={`p-2 ${color}`}>Compliance: {percent}%</div>
-                <div className="mt-2">🏆 {leaderboardList[0]?.[0]}</div>
-                <div className="mt-2 font-bold">Log</div>
-                {day.log.map((l, i) => <div key={i} className="text-sm">{l}</div>)}
+                <h2 className="font-bold mb-2">Dashboard</h2>
+                <div>Compliance: {percent}%</div>
+                <h3 className="mt-2 font-bold">Log</h3>
+                {day.log.map((l,i)=><div key={i}>{l.time} – {l.text}</div>)}
               </div>
             )}
           </>
@@ -206,4 +203,4 @@ export default function App() {
       </div>
     </div>
   );
-} 
+}
