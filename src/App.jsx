@@ -1,25 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-/* ======================
-   DATA
-====================== */
+/* =======================
+   KONFIGURATION
+======================= */
 
 const SITE = "AG WS";
 
 const USERS = [
-  { id: "oliver", name: "Oliver", role: "bpo", pin: "1111" },
-  { id: "emil", name: "Emil", role: "bpo", pin: "2222" },
-  { id: "william", name: "William", role: "bpo", pin: "3333" },
+  { id: "oliver", name: "Oliver De Morais Andersen", role: "bpo", pin: "andersen" },
+  { id: "emil", name: "Emil Gothart", role: "bpo", pin: "gothart" },
+  { id: "william", name: "William Garn Snedker Pedersen", role: "bpo", pin: "pedersen" },
 
-  { id: "martin", name: "Martin", role: "koordinator", pin: "4444" },
-  { id: "catharina", name: "Catharina", role: "koordinator", pin: "5555" },
-  { id: "hanne", name: "Hanne", role: "koordinator", pin: "6666" },
+  { id: "catharina", name: "Catharina Andersen", role: "koordinator", pin: "andersen" },
+  { id: "martin", name: "Martin Pajesø", role: "koordinator", pin: "pajesø" },
+  { id: "hanne", name: "Hanne Brobæk Jensen", role: "koordinator", pin: "jensen" },
 
-  { id: "jon", name: "Jon", role: "logistikchef", pin: "9999" },
-  { id: "marie", name: "Marie", role: "logistikchef", pin: "8888" },
+  { id: "john", name: "John Storm", role: "logistikchef", pin: "storm" },
+  { id: "marie", name: "Marie Grand", role: "logistikchef", pin: "grand" },
 ];
 
-const BASE_TASKS = [
+const FIXED_TASKS = [
   "Arbejdstilladelse – husk sikkerhedskort",
   "Tjek alle SiteHub-hegn for skader (inkl. jordvolden)",
   "Registrér leverancer i Sitebooking (billeder af nr.plade og følgeseddel)",
@@ -32,73 +32,78 @@ const BASE_TASKS = [
   "Suspendér arbejdstilladelse – ring 30750246",
 ];
 
-const STORAGE = "sitehub_full_v1";
+/* =======================
+   HJÆLPERE
+======================= */
 
-/* ======================
-   HELPERS
-====================== */
+const todayKey = () => {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+};
 
-const today = () => new Date().toISOString().slice(0, 10);
-const now = () =>
-  new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+const now = () => new Date().toISOString();
 
-function newDay() {
+const uid = () => Math.random().toString(36).slice(2, 9);
+
+function emptyDay(date) {
   return {
-    tasks: BASE_TASKS.map((t) => ({
-      id: crypto.randomUUID(),
+    date,
+    locked: false,
+    approvedBy: null,
+    tasks: FIXED_TASKS.map(t => ({
+      id: uid(),
       text: t,
-      checks: [],
+      checks: []
     })),
-    log: [],
+    adhoc: [],
+    log: []
   };
 }
 
-/* ======================
+/* =======================
    APP
-====================== */
+======================= */
 
 export default function App() {
+  const [user, setUser] = useState(null);
   const [userId, setUserId] = useState("");
   const [pin, setPin] = useState("");
-  const [user, setUser] = useState(null);
+  const [error, setError] = useState("");
 
-  const [calendar, setCalendar] = useState({});
-  const [selectedDate, setSelectedDate] = useState(today());
+  const [date, setDate] = useState(todayKey());
+  const [db, setDb] = useState({});
   const [adhocText, setAdhocText] = useState("");
 
-  /* Load */
+  /* ===== Load / Save ===== */
   useEffect(() => {
-    const data = JSON.parse(localStorage.getItem(STORAGE)) || {};
-    if (!data[selectedDate]) data[selectedDate] = newDay();
-    setCalendar(data);
+    const saved = JSON.parse(localStorage.getItem("sitehub_data") || "{}");
+    setDb(saved);
   }, []);
 
-  /* Save */
   useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify(calendar));
-  }, [calendar]);
+    localStorage.setItem("sitehub_data", JSON.stringify(db));
+  }, [db]);
 
-  function ensureDay(date) {
-    setCalendar((c) => {
-      if (c[date]) return c;
-      return { ...c, [date]: newDay() };
-    });
+  const day = useMemo(() => {
+    return db[date] || emptyDay(date);
+  }, [db, date]);
+
+  function saveDay(updated) {
+    setDb(prev => ({ ...prev, [date]: updated }));
   }
 
-  function changeDate(date) {
-    ensureDay(date);
-    setSelectedDate(date);
-  }
-
-  const day = calendar[selectedDate];
-  const canCheck = user && (user.role === "bpo" || user.role === "koordinator");
-
-  /* Login */
+  /* ===== Login ===== */
   function login() {
-    const u = USERS.find((u) => u.id === userId && u.pin === pin);
-    if (!u) return alert("Forkert login");
+    const u = USERS.find(
+      u => u.id === userId && u.pin.toLowerCase() === pin.toLowerCase().trim()
+    );
+    if (!u) {
+      setError("Forkert bruger eller pinkode");
+      return;
+    }
     setUser(u);
     setPin("");
+    setError("");
   }
 
   function logout() {
@@ -107,152 +112,141 @@ export default function App() {
     setPin("");
   }
 
-  /* Toggle check */
-  function toggleCheck(task) {
-    if (!canCheck) return;
+  /* ===== Permission ===== */
+  const canEdit = user && (user.role === "bpo" || user.role === "koordinator");
+  const isChef = user && user.role === "logistikchef";
 
-    setCalendar((c) => {
-      const d = { ...c[selectedDate] };
-      const t = d.tasks.find((x) => x.id === task.id);
-      const existing = t.checks.find((x) => x.user === user.name);
+  /* ===== Task toggle ===== */
+  function toggleTask(task) {
+    if (!canEdit || day.locked) return;
 
-      if (existing) {
-        t.checks = t.checks.filter((x) => x.user !== user.name);
-        d.log.push(`${now()} – ${user.name} fjernede flueben på "${t.text}"`);
+    const exists = task.checks.find(c => c.user === user.name);
+
+    let newChecks;
+    let action;
+
+    if (exists) {
+      if (user.role === "bpo") {
+        newChecks = task.checks.filter(c => c.user !== user.name);
+        action = "fjernede flueben på";
       } else {
-        t.checks.push({ user: user.name, time: now() });
-        d.log.push(`${now()} – ${user.name} udførte "${t.text}"`);
+        newChecks = [];
+        action = "nulstillede";
       }
+    } else {
+      newChecks = [...task.checks, { user: user.name, time: now() }];
+      action = "udførte";
+    }
 
-      return { ...c, [selectedDate]: d };
-    });
+    const updated = {
+      ...day,
+      tasks: day.tasks.map(t =>
+        t.id === task.id ? { ...t, checks: newChecks } : t
+      ),
+      log: [
+        ...day.log,
+        { time: now(), text: `${user.name} ${action} "${task.text}"` }
+      ]
+    };
+
+    saveDay(updated);
   }
 
-  /* AD-HOC */
+  /* ===== ADHOC ===== */
   function addAdhoc() {
-    if (!adhocText.trim() || !canCheck) return;
+    if (!canEdit || day.locked || !adhocText.trim()) return;
 
-    setCalendar((c) => {
-      const d = { ...c[selectedDate] };
-      d.tasks.push({ id: crypto.randomUUID(), text: adhocText, checks: [] });
-      d.log.push(`${now()} – ${user.name} tilføjede AD-HOC "${adhocText}"`);
-      return { ...c, [selectedDate]: d };
-    });
+    const task = { id: uid(), text: adhocText, checks: [] };
 
+    const updated = {
+      ...day,
+      adhoc: [...day.adhoc, task],
+      log: [...day.log, { time: now(), text: `${user.name} oprettede AD-HOC: "${adhocText}"` }]
+    };
+
+    saveDay(updated);
     setAdhocText("");
   }
 
+  /* ===== Approval ===== */
+  const allDone = [...day.tasks, ...day.adhoc].every(t => t.checks.length > 0);
+
+  function approveDay() {
+    if (!isChef || !allDone) return;
+
+    saveDay({
+      ...day,
+      locked: true,
+      approvedBy: { name: user.name, time: now() }
+    });
+  }
+
+  /* =======================
+     RENDER
+  ======================= */
+
   return (
-    <div className="min-h-screen bg-gray-100 p-4 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1">Daglig tjekliste – {SITE}</h1>
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-xl mx-auto space-y-4">
 
-      <input
-        type="date"
-        value={selectedDate}
-        onChange={(e) => changeDate(e.target.value)}
-        className="border p-2 mb-4 rounded w-full"
-      />
-
-      {!user && (
-        <div className="bg-white p-4 rounded shadow mb-4">
-          <select
-            className="w-full border p-2 mb-2"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-          >
-            <option value="">Vælg bruger</option>
-            {USERS.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name} ({u.role})
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="password"
-            className="w-full border p-2 mb-2"
-            placeholder="Pinkode"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-          />
-
-          <button
-            onClick={login}
-            className="w-full bg-black text-white p-2 rounded"
-          >
-            Log ind
-          </button>
+        <div className="bg-white p-4 rounded shadow">
+          <h1 className="text-xl font-bold">Daglig tjekliste – {SITE}</h1>
+          <p className="text-sm text-gray-500">Dato: {date}</p>
         </div>
-      )}
 
-      {user && (
-        <div className="bg-white p-3 rounded mb-3 flex justify-between">
-          <div>
-            {user.name} ({user.role})
+        {!user ? (
+          <div className="bg-white p-4 rounded shadow space-y-2">
+            <select className="w-full p-2 border" value={userId} onChange={e => setUserId(e.target.value)}>
+              <option value="">Vælg bruger</option>
+              {USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <input type="password" className="w-full p-2 border" placeholder="Efternavn" value={pin} onChange={e => setPin(e.target.value)} />
+            <button className="w-full bg-black text-white p-2" onClick={login}>Log ind</button>
+            {error && <div className="text-red-600">{error}</div>}
           </div>
-          <button onClick={logout}>Log ud</button>
-        </div>
-      )}
+        ) : (
+          <div className="bg-white p-4 rounded shadow flex justify-between">
+            <div>{user.name} ({user.role})</div>
+            <button onClick={logout}>Log ud</button>
+          </div>
+        )}
 
-      {day &&
-        day.tasks.map((t) => (
-          <div
-            key={t.id}
-            className="bg-white p-3 rounded mb-2 flex justify-between items-center"
-          >
-            <div>
-              <div
-                className={
-                  t.checks.length > 0 ? "line-through text-gray-400" : ""
-                }
-              >
-                {t.text}
-              </div>
-              {t.checks.length > 0 && (
-                <div className="text-xs text-gray-500">
-                  {t.checks.map((c) => `${c.user} (${c.time})`).join(", ")}
-                </div>
-              )}
-            </div>
-
-            {canCheck && (
-              <input
-                type="checkbox"
-                checked={t.checks.some((c) => c.user === user.name)}
-                onChange={() => toggleCheck(t)}
-              />
-            )}
+        {[...day.tasks, ...day.adhoc].map(t => (
+          <div key={t.id} className="bg-white p-3 rounded shadow flex justify-between">
+            <div className={t.checks.length ? "line-through text-gray-400" : ""}>{t.text}</div>
+            <button onClick={() => toggleTask(t)} className="text-xl">✔</button>
           </div>
         ))}
 
-      {canCheck && (
-        <div className="bg-white p-3 rounded mt-4">
-          <h3 className="font-bold mb-2">AD-HOC</h3>
-          <input
-            className="border p-2 w-full mb-2"
-            placeholder="Ny AD-HOC opgave"
-            value={adhocText}
-            onChange={(e) => setAdhocText(e.target.value)}
-          />
-          <button
-            onClick={addAdhoc}
-            className="w-full bg-black text-white p-2 rounded"
-          >
-            Tilføj
-          </button>
-        </div>
-      )}
+        {canEdit && !day.locked && (
+          <div className="bg-white p-4 rounded shadow space-y-2">
+            <input className="w-full p-2 border" placeholder="AD-HOC opgave…" value={adhocText} onChange={e => setAdhocText(e.target.value)} />
+            <button className="w-full bg-gray-800 text-white p-2" onClick={addAdhoc}>Tilføj</button>
+          </div>
+        )}
 
-      {user?.role === "logistikchef" && (
-        <div className="bg-white p-3 rounded mt-4">
-          <h3 className="font-bold mb-2">Ændringslog</h3>
-          {day.log.map((l, i) => (
-            <div key={i} className="text-xs mb-1">
-              {l}
-            </div>
-          ))}
-        </div>
-      )}
+        {isChef && !day.locked && (
+          <button disabled={!allDone} onClick={approveDay} className="w-full p-3 bg-green-700 text-white rounded">
+            Godkend dag
+          </button>
+        )}
+
+        {day.locked && (
+          <div className="bg-green-100 p-4 rounded">
+            Godkendt af {day.approvedBy?.name}
+          </div>
+        )}
+
+        {isChef && (
+          <div className="bg-white p-4 rounded shadow">
+            <h3 className="font-bold mb-2">Log</h3>
+            {day.log.map((l, i) => (
+              <div key={i} className="text-sm text-gray-600">{l.text}</div>
+            ))}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
