@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 const SITE = "AG WS";
 
 const BRUGERE = [
-  { id: "oliver", navn: "Oliver", rolle: "bpo", pinkode: "1111" },
-  { id: "emil", navn: "Emil", rolle: "bpo", pinkode: "2222" },
-  { id: "william", navn: "William", rolle: "bpo", pinkode: "3333" },
-  { id: "jon", navn: "Jon", rolle: "logistikchef", pinkode: "9999" },
-  { id: "martin", navn: "Martin", rolle: "koordinator", pinkode: "4444" },
-  { id: "catharina", navn: "Catharina", rolle: "koordinator", pinkode: "5555" },
+  { id: "oliver", navn: "Oliver", pinkode: "1111", rolle: "bpo" },
+  { id: "emil", navn: "Emil", pinkode: "2222", rolle: "bpo" },
+  { id: "william", navn: "William", pinkode: "3333", rolle: "bpo" },
+  { id: "jon", navn: "Jon", pinkode: "9999", rolle: "chef" },
 ];
 
 const OPGAVER = [
@@ -21,137 +19,111 @@ const OPGAVER = [
   "Tjek alle SiteHub-hegn for skader",
   "Skriv besked på Slack ved akutte beskeder",
   "Lås container S2 ved fyraften",
-  "Suspendér arbejdstilladelse – ring 30750246",
+  "Suspendér arbejdstilladelse – ring 30750246"
 ];
-
-const STORAGE = "sitehub_bpo_audit_v1";
-
-const today = () => new Date().toISOString().slice(0, 10);
-const now = () => new Date().toISOString();
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-function nyDag() {
-  return {
-    site: SITE,
-    dato: today(),
-    godkendt: false,
-    godkendtAf: null,
-    opgaver: OPGAVER.map(t => ({
-      id: uid(),
-      tekst: t,
-      udført: false,
-      udførtAf: [],
-      tidspunkt: null
-    })),
-    log: []
-  };
-}
 
 export default function App() {
   const [brugerId, setBrugerId] = useState("");
   const [pinkode, setPinkode] = useState("");
   const [bruger, setBruger] = useState(null);
-  const [fejl, setFejl] = useState("");
-  const [dag, setDag] = useState(null);
-  const [adhoc, setAdhoc] = useState("");
 
-  useEffect(() => {
-    try {
-      const gemt = JSON.parse(localStorage.getItem(STORAGE));
-      if (!gemt || gemt.dato !== today()) throw 0;
-      setDag(gemt);
-    } catch {
-      const frisk = nyDag();
-      setDag(frisk);
-      localStorage.setItem(STORAGE, JSON.stringify(frisk));
-    }
-  }, []);
-
-  useEffect(() => {
-    if (dag) localStorage.setItem(STORAGE, JSON.stringify(dag));
-  }, [dag]);
+  const [opgaver, setOpgaver] = useState(
+    OPGAVER.map(o => ({ tekst: o, udført: false, af: null, tid: null }))
+  );
 
   function logInd() {
-    const fundet = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
-    if (!fundet) return setFejl("Forkert bruger eller pinkode");
-    setBruger(fundet);
-    setFejl("");
+    const b = BRUGERE.find(b => b.id === brugerId && b.pinkode === pinkode);
+    if (b) setBruger(b);
+    else alert("Forkert pinkode");
   }
 
-  function toggleOpgave(id) {
-    if (!bruger || dag.godkendt) return;
+  function toggle(i) {
+    if (!bruger || bruger.rolle !== "bpo") return;
 
-    setDag(prev => {
-      const opgave = prev.opgaver.find(o => o.id === id);
-      if (!opgave) return prev;
+    setOpgaver(prev =>
+      prev.map((o, index) => {
+        if (index !== i) return o;
 
-      const erChef = bruger.rolle === "logistikchef" || bruger.rolle === "koordinator";
-      const erBPO = bruger.rolle === "bpo";
-      const harSelv = opgave.udførtAf.some(u => u.navn === bruger.navn);
+        // Kun den der satte flueben må fjerne det
+        if (o.udført && o.af !== bruger.navn) return o;
 
-      if (opgave.udført) {
-        if (!(erChef || (erBPO && harSelv))) return prev;
         return {
-          ...prev,
-          opgaver: prev.opgaver.map(o => o.id === id ? { ...o, udført: false, udførtAf: [], tidspunkt: null } : o),
-          log: [...prev.log, { id: uid(), tekst: `❌ ${bruger.navn} fjernede flueben på "${opgave.tekst}"`, tid: new Date().toLocaleTimeString("da-DK") }]
+          ...o,
+          udført: !o.udført,
+          af: !o.udført ? bruger.navn : null,
+          tid: !o.udført ? new Date().toLocaleTimeString("da-DK", {hour:"2-digit", minute:"2-digit"}) : null
         };
-      }
-
-      return {
-        ...prev,
-        opgaver: prev.opgaver.map(o =>
-          o.id === id ? { ...o, udført: true, tidspunkt: now(), udførtAf: [...o.udførtAf, { navn: bruger.navn, tid: now() }] } : o
-        ),
-        log: [...prev.log, { id: uid(), tekst: `✅ ${bruger.navn} udførte "${opgave.tekst}"`, tid: new Date().toLocaleTimeString("da-DK") }]
-      };
-    });
+      })
+    );
   }
-
-  const alleUdført = useMemo(() => dag?.opgaver.every(o => o.udført), [dag]);
-
-  function godkend() {
-    if (bruger?.rolle !== "logistikchef" || !alleUdført) return;
-    setDag(prev => ({ ...prev, godkendt: true, godkendtAf: { navn: bruger.navn, tid: now() } }));
-  }
-
-  if (!dag) return null;
 
   return (
-    <div style={{ background: "#f3f4f6", minHeight: "100vh", padding: 16 }}>
-      <h2>SiteHub BPO – {SITE}</h2>
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="max-w-md mx-auto space-y-4">
 
-      {!bruger ? (
-        <div>
-          <select onChange={e => setBrugerId(e.target.value)}>
-            <option value="">Vælg bruger</option>
-            {BRUGERE.map(b => <option key={b.id} value={b.id}>{b.navn} ({b.rolle})</option>)}
-          </select>
-          <input type="password" placeholder="Pinkode" onChange={e => setPinkode(e.target.value)} />
-          <button onClick={logInd}>Log ind</button>
-          {fejl && <p style={{ color: "red" }}>{fejl}</p>}
+        <div className="bg-white rounded-xl p-4 shadow">
+          <h1 className="text-xl font-bold">SiteHub BPO – {SITE}</h1>
+
+          {!bruger && (
+            <div className="space-y-2 mt-3">
+              <select className="w-full p-2 rounded border"
+                value={brugerId}
+                onChange={e => setBrugerId(e.target.value)}
+              >
+                <option value="">Vælg bruger</option>
+                {BRUGERE.map(b => (
+                  <option key={b.id} value={b.id}>{b.navn}</option>
+                ))}
+              </select>
+
+              <input
+                type="password"
+                placeholder="Pinkode"
+                className="w-full p-2 border rounded"
+                value={pinkode}
+                onChange={e => setPinkode(e.target.value)}
+              />
+
+              <button
+                onClick={logInd}
+                className="w-full bg-blue-600 text-white py-2 rounded font-semibold"
+              >
+                Log ind
+              </button>
+            </div>
+          )}
+
+          {bruger && (
+            <div className="mt-2 text-sm text-gray-600">
+              Logget ind som <b>{bruger.navn}</b>
+            </div>
+          )}
         </div>
-      ) : (
-        <p>Logget ind som {bruger.navn} ({bruger.rolle})</p>
-      )}
 
-      {dag.opgaver.map(o => (
-        <div key={o.id}>
-          <input type="checkbox" checked={o.udført} disabled={dag.godkendt} onChange={() => toggleOpgave(o.id)} /> {o.tekst}
-          {o.tidspunkt && <small> – {o.udførtAf.map(u => u.navn).join(", ")} kl. {new Date(o.tidspunkt).toLocaleTimeString("da-DK")}</small>}
-        </div>
-      ))}
+        {opgaver.map((o, i) => (
+          <div
+            key={i}
+            onClick={() => toggle(i)}
+            className={`p-4 rounded-xl shadow cursor-pointer bg-white flex justify-between items-center
+              ${o.udført ? "border-l-8 border-green-500" : "border-l-8 border-gray-300"}`}
+          >
+            <div>
+              <div className="font-medium">{o.tekst}</div>
+              {o.udført && (
+                <div className="text-xs text-gray-500">
+                  Udført af {o.af} kl. {o.tid}
+                </div>
+              )}
+            </div>
 
-      {bruger?.rolle === "logistikchef" && !dag.godkendt && (
-        <button disabled={!alleUdført} onClick={godkend}>Godkend dagen</button>
-      )}
+            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center
+              ${o.udført ? "bg-green-500 border-green-500 text-white" : "border-gray-400"}`}>
+              {o.udført && "✓"}
+            </div>
+          </div>
+        ))}
 
-      {(bruger?.rolle === "logistikchef" || bruger?.rolle === "koordinator") && (
-        <div style={{ marginTop: 20, background: "#111", color: "#fff", padding: 10 }}>
-          <strong>Ændringslog</strong>
-          {dag.log.map(l => <div key={l.id}>{l.tid} – {l.tekst}</div>)}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
