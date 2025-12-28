@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-/* ===========================
-   KONFIGURATION
-=========================== */
+/* ======================
+   DATA
+====================== */
 
 const SITE = "AG WS";
 
@@ -13,8 +13,10 @@ const USERS = [
 
   { id: "martin", name: "Martin", role: "koordinator", pin: "4444" },
   { id: "catharina", name: "Catharina", role: "koordinator", pin: "5555" },
+  { id: "hanne", name: "Hanne", role: "koordinator", pin: "6666" },
 
   { id: "jon", name: "Jon", role: "logistikchef", pin: "9999" },
+  { id: "marie", name: "Marie", role: "logistikchef", pin: "8888" },
 ];
 
 const BASE_TASKS = [
@@ -30,11 +32,11 @@ const BASE_TASKS = [
   "Suspendér arbejdstilladelse – ring 30750246",
 ];
 
-const STORAGE = "sitehub_calendar_v2";
+const STORAGE = "sitehub_full_v1";
 
-/* ===========================
-   HJÆLPERE
-=========================== */
+/* ======================
+   HELPERS
+====================== */
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () =>
@@ -45,15 +47,15 @@ function newDay() {
     tasks: BASE_TASKS.map((t) => ({
       id: crypto.randomUUID(),
       text: t,
-      checks: [], // [{user, time}]
+      checks: [],
     })),
     log: [],
   };
 }
 
-/* ===========================
+/* ======================
    APP
-=========================== */
+====================== */
 
 export default function App() {
   const [userId, setUserId] = useState("");
@@ -64,19 +66,17 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(today());
   const [adhocText, setAdhocText] = useState("");
 
-  /* Load storage */
+  /* Load */
   useEffect(() => {
     const data = JSON.parse(localStorage.getItem(STORAGE)) || {};
     if (!data[selectedDate]) data[selectedDate] = newDay();
     setCalendar(data);
   }, []);
 
-  /* Persist */
+  /* Save */
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify(calendar));
   }, [calendar]);
-
-  const day = calendar[selectedDate];
 
   function ensureDay(date) {
     setCalendar((c) => {
@@ -89,6 +89,9 @@ export default function App() {
     ensureDay(date);
     setSelectedDate(date);
   }
+
+  const day = calendar[selectedDate];
+  const canCheck = user && (user.role === "bpo" || user.role === "koordinator");
 
   /* Login */
   function login() {
@@ -103,8 +106,6 @@ export default function App() {
     setUserId("");
     setPin("");
   }
-
-  const canCheck = user && (user.role === "bpo" || user.role === "koordinator");
 
   /* Toggle check */
   function toggleCheck(task) {
@@ -143,7 +144,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 max-w-xl mx-auto">
-     <h1 className="text-2xl font-bold mb-1">Daglig tjekliste – {SITE}</h1>
+      <h1 className="text-2xl font-bold mb-1">Daglig tjekliste – {SITE}</h1>
 
       <input
         type="date"
@@ -200,7 +201,13 @@ export default function App() {
             className="bg-white p-3 rounded mb-2 flex justify-between items-center"
           >
             <div>
-              <div>{t.text}</div>
+              <div
+                className={
+                  t.checks.length > 0 ? "line-through text-gray-400" : ""
+                }
+              >
+                {t.text}
+              </div>
               {t.checks.length > 0 && (
                 <div className="text-xs text-gray-500">
                   {t.checks.map((c) => `${c.user} (${c.time})`).join(", ")}
