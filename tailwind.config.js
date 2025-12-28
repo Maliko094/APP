@@ -1,10 +1,7 @@
-export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,jsx}"
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: system-ui, sans-serif;
 }
