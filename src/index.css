@@ -3,5 +3,5 @@
 @tailwind utilities;
 
 html, body {
-  @apply bg-slate-100 text-slate-900;
+  background-color: #f3f4f6;
 }
