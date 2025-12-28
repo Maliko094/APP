@@ -182,7 +182,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 max-w-xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1">SiteHub BPO – {SITE}</h1>
+      <h1 className="text-2xl font-bold mb-1">Daglig tjekliste – {SITE}</h1>
       <p className="text-gray-600 mb-4">Dato: {day.date}</p>
 
       {!user && (
