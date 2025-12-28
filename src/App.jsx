@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
-/* ==========================
+/* =========================
    KONFIGURATION
-========================== */
+========================= */
 
 const SITE = "AG WS";
-const STORAGE = "sitehub_daily_v7";
+const STORAGE = "sitehub_ag_ws_v1";
 
 const USERS = [
   { id: "oliver", name: "Oliver De Morais Andersen", role: "bpo", pin: "andersen" },
@@ -33,9 +33,9 @@ const BASE_TASKS = [
   "Suspendér arbejdstilladelse – ring 30750246",
 ];
 
-/* ==========================
+/* =========================
    HJÆLPERE
-========================== */
+========================= */
 
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
@@ -44,16 +44,14 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 function makeDay(date) {
   return {
     date,
-    locked: false,
-    approvedBy: null,
     tasks: BASE_TASKS.map(t => ({ id: uid(), text: t, checks: [] })),
-    log: [],
+    log: []
   };
 }
 
-/* ==========================
+/* =========================
    APP
-========================== */
+========================= */
 
 export default function App() {
   const [db, setDb] = useState({});
@@ -61,12 +59,13 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [userId, setUserId] = useState("");
   const [pin, setPin] = useState("");
+  const [view, setView] = useState("start");
   const [adhoc, setAdhoc] = useState("");
 
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem(STORAGE) || "{}");
-    if (!saved[today()]) saved[today()] = makeDay(today());
-    setDb(saved);
+    const stored = JSON.parse(localStorage.getItem(STORAGE) || "{}");
+    if (!stored[today()]) stored[today()] = makeDay(today());
+    setDb(stored);
   }, []);
 
   useEffect(() => {
@@ -74,7 +73,6 @@ export default function App() {
   }, [db]);
 
   const day = db[date] || makeDay(date);
-
   const canWork = user && (user.role === "bpo" || user.role === "koordinator");
   const isChef = user && user.role === "logistikchef";
 
@@ -84,60 +82,60 @@ export default function App() {
     );
     if (!u) return alert("Forkert login");
     setUser(u);
+    setView(u.role === "logistikchef" ? "dashboard" : "start");
     setPin("");
   }
 
   function toggleTask(task) {
-    if (!canWork || day.locked) return;
+    if (!canWork) return;
 
     const exists = task.checks.find(c => c.user === user.name);
     let newChecks;
-    let action;
 
     if (exists) {
       if (user.role === "bpo") {
         newChecks = task.checks.filter(c => c.user !== user.name);
-        action = "fjernede";
       } else {
         newChecks = [];
-        action = "nulstillede";
       }
     } else {
       newChecks = [...task.checks, { user: user.name, time: now() }];
-      action = "udførte";
     }
 
     const updated = {
       ...day,
       tasks: day.tasks.map(t => t.id === task.id ? { ...t, checks: newChecks } : t),
-      log: [...day.log, `${new Date().toLocaleTimeString("da-DK")} – ${user.name} ${action}: ${task.text}`],
+      log: [...day.log, `${user.name} ændrede: ${task.text}`]
     };
 
     setDb(prev => ({ ...prev, [date]: updated }));
   }
 
   function addAdhoc() {
-    if (!canWork || day.locked || !adhoc.trim()) return;
+    if (!canWork || !adhoc.trim()) return;
 
     const updated = {
       ...day,
-      tasks: [...day.tasks, { id: uid(), text: adhoc, checks: [], adhoc: true }],
-      log: [...day.log, `${new Date().toLocaleTimeString("da-DK")} – ${user.name} tilføjede AD-HOC: ${adhoc}`],
+      tasks: [...day.tasks, { id: uid(), text: adhoc, checks: [] }],
+      log: [...day.log, `${user.name} tilføjede AD-HOC: ${adhoc}`]
     };
 
     setDb(prev => ({ ...prev, [date]: updated }));
     setAdhoc("");
   }
 
-  const allDone = day.tasks.every(t => t.checks.length > 0);
+  const total = day.tasks.length;
+  const done = day.tasks.filter(t => t.checks.length > 0).length;
+  const percent = Math.round((done / total) * 100);
+  const color = percent === 100 ? "bg-green-200" : percent >= 80 ? "bg-yellow-200" : "bg-red-200";
 
-  function approve() {
-    if (!isChef || !allDone) return;
-    setDb(prev => ({
-      ...prev,
-      [date]: { ...day, locked: true, approvedBy: { name: user.name, time: now() } }
-    }));
-  }
+  const leaderboard = {};
+  day.tasks.forEach(t => t.checks.forEach(c => {
+    leaderboard[c.user] = (leaderboard[c.user] || 0) + 1;
+  }));
+
+  const leaderboardList = Object.entries(leaderboard).sort((a, b) => b[1] - a[1]);
+  const missing = day.tasks.filter(t => t.checks.length === 0);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
@@ -154,50 +152,55 @@ export default function App() {
               <option value="">Vælg bruger</option>
               {USERS.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
-            <input type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
+            <input value={pin} onChange={e => setPin(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
             <button onClick={login} className="w-full bg-black text-white p-3 rounded">Log ind</button>
           </div>
         ) : (
-          <div className="bg-white p-4 rounded-xl shadow flex justify-between">
-            <div>{user.name} ({user.role})</div>
-            <button onClick={() => setUser(null)}>Log ud</button>
-          </div>
-        )}
-
-        {day.tasks.map(t => {
-          const mine = t.checks.some(c => c.user === user?.name);
-          return (
-            <div key={t.id} onClick={() => toggleTask(t)} className={`bg-white p-3 rounded-xl shadow flex justify-between cursor-pointer ${mine ? "line-through text-gray-400" : ""}`}>
-              <div>
-                {t.text}
-                <div className="text-xs text-gray-500">{t.checks.map(c => `${c.user.split(" ")[0]} ${new Date(c.time).toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" })}`).join(", ")}</div>
+          <>
+            {user.role !== "logistikchef" && (
+              <div className="flex gap-2">
+                <button onClick={() => setView("start")} className={`flex-1 p-2 rounded ${view === "start" ? "bg-black text-white" : "bg-gray-200"}`}>Start</button>
+                <button onClick={() => setView("tjekliste")} className={`flex-1 p-2 rounded ${view === "tjekliste" ? "bg-black text-white" : "bg-gray-200"}`}>Tjekliste</button>
               </div>
-              {mine && "✔"}
-            </div>
-          );
-        })}
+            )}
 
-        {canWork && !day.locked && (
-          <div className="bg-white p-4 rounded-xl shadow space-y-2">
-            <input value={adhoc} onChange={e => setAdhoc(e.target.value)} placeholder="AD-HOC opgave…" className="w-full border p-2 rounded" />
-            <button onClick={addAdhoc} className="w-full bg-gray-800 text-white p-2 rounded">Tilføj</button>
-          </div>
-        )}
+            {view === "start" && (
+              <div className={`p-4 rounded-xl shadow ${color}`}>
+                <h2 className="text-lg font-bold">Godmorgen {user.name.split(" ")[0]}</h2>
+                <div>Status: {done}/{total} ({percent}%)</div>
+                <div className="mt-2 font-bold">Leaderboard</div>
+                {leaderboardList.map(([n, c], i) => <div key={n}>{i + 1}. {n} – {c}</div>)}
+                <div className="mt-2 font-bold">Mangler</div>
+                {missing.map(t => <div key={t.id}>{t.text}</div>)}
+              </div>
+            )}
 
-        {isChef && !day.locked && (
-          <button disabled={!allDone} onClick={approve} className="w-full bg-green-700 text-white p-3 rounded">
-            Godkend dag
-          </button>
-        )}
+            {view === "tjekliste" && day.tasks.map(t => {
+              const mine = t.checks.some(c => c.user === user.name);
+              return (
+                <div key={t.id} onClick={() => toggleTask(t)} className={`bg-white p-3 rounded-xl shadow cursor-pointer ${mine ? "line-through text-gray-400" : ""}`}>
+                  {t.text}
+                </div>
+              );
+            })}
 
-        {isChef && (
-          <div className="bg-white p-4 rounded-xl shadow">
-            <h3 className="font-bold">Dashboard</h3>
-            <div>Udført: {day.tasks.filter(t => t.checks.length > 0).length} / {day.tasks.length}</div>
-            <div className="mt-2">
-              {day.log.map((l, i) => <div key={i} className="text-sm">{l}</div>)}
-            </div>
-          </div>
+            {canWork && (
+              <div className="bg-white p-4 rounded-xl shadow">
+                <input value={adhoc} onChange={e => setAdhoc(e.target.value)} placeholder="AD-HOC opgave" className="w-full border p-2 rounded" />
+                <button onClick={addAdhoc} className="w-full bg-gray-800 text-white p-2 mt-2 rounded">Tilføj</button>
+              </div>
+            )}
+
+            {isChef && (
+              <div className="bg-white p-4 rounded-xl shadow">
+                <h3 className="font-bold">Dashboard</h3>
+                <div className={`p-2 ${color}`}>Compliance: {percent}%</div>
+                <div className="mt-2">🏆 {leaderboardList[0]?.[0]}</div>
+                <div className="mt-2 font-bold">Log</div>
+                {day.log.map((l, i) => <div key={i} className="text-sm">{l}</div>)}
+              </div>
+            )}
+          </>
         )}
 
       </div>
