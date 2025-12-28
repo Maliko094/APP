@@ -14,7 +14,7 @@ const USERS = [
   { id: "martin", name: "Martin", role: "koordinator", pin: "4444" },
   { id: "catharina", name: "Catharina", role: "koordinator", pin: "5555" },
 
-  { id: "jon", name: "Jon", role: "logistikchef", pin: "9999" },
+  { id: "jon", name: "John", role: "logistikchef", pin: "9999" },
 ];
 
 const BASE_TASKS = [
