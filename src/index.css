@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* App defaults */
+html, body, #root {
+  height: 100%;
+}
+
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-} 
+  @apply bg-gray-100 text-gray-900;
+}
