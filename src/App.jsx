@@ -119,7 +119,11 @@ export default function App() {
         <h1 className="text-2xl font-bold mb-4">SiteHub AG WS</h1>
         <select className="w-full p-2 border rounded mb-2" onChange={e => setCurrentUser(users.find(u => u.id == e.target.value))}>
           <option>Vælg bruger</option>
-          {users.map(u => <option key={i={u.id} value={u.id}>{u.name}</option>)}
+          {{users.map(u => (
+  <option key={u.id} value={u.id}>
+    {u.name}
+  </option>
+))}
         </select>
         <input className="w-full p-2 border rounded mb-2" placeholder="Pinkode" value={pin} onChange={e => setPin(e.target.value)} />
         <button className="w-full bg-black text-white p-2 rounded" onClick={() => login(currentUser)}>Log ind</button>
