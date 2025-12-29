@@ -1,26 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 
-/* ================================
+/* =========================
    KONFIGURATION
-================================ */
+========================= */
 
 const SITE = "AG WS";
-const STORAGE = "sitehub_ag_ws_full";
+const STORAGE = "sitehub_ag_ws_final";
 
 const USERS = [
-  { id: "oliver", name: "Oliver De Morais Andersen", role: "bpo", pin: "andersen" },
-  { id: "william", name: "William Garn Snedker Pedersen", role: "bpo", pin: "pedersen" },
-  { id: "emil", name: "Emil Gothart", role: "bpo", pin: "gothart" },
+  { id: "oliver", navn: "Oliver De Morais Andersen", rolle: "bpo", pin: "andersen" },
+  { id: "william", navn: "William Garn Snedker Pedersen", rolle: "bpo", pin: "pedersen" },
+  { id: "emil", navn: "Emil Gothart", rolle: "bpo", pin: "gothart" },
 
-  { id: "martin", name: "Martin Pajesø", role: "koordinator", pin: "pajesø" },
-  { id: "catharina", name: "Catharina Andersen", role: "koordinator", pin: "andersen" },
-  { id: "hanne", name: "Hanne Brobæk Jensen", role: "koordinator", pin: "jensen" },
+  { id: "martin", navn: "Martin Pajesø", rolle: "koordinator", pin: "pajesø" },
+  { id: "catharina", navn: "Catharina Andersen", rolle: "koordinator", pin: "andersen" },
+  { id: "hanne", navn: "Hanne Brobæk Jensen", rolle: "koordinator", pin: "jensen" },
 
-  { id: "john", name: "John Storm", role: "logistikchef", pin: "storm" },
-  { id: "marie", name: "Marie Grand", role: "logistikchef", pin: "grand" }
+  { id: "john", navn: "John Storm", rolle: "logistikchef", pin: "storm" },
+  { id: "marie", navn: "Marie Grand", rolle: "logistikchef", pin: "grand" }
 ];
 
-const BASE_TASKS = [
+const BASE_OPGAVER = [
   "Arbejdstilladelse – husk sikkerhedskort",
   "Tjek SiteHub-hegn",
   "Registrér leverancer i Sitebooking",
@@ -33,174 +33,180 @@ const BASE_TASKS = [
   "Suspendér arbejdstilladelse"
 ];
 
-/* ================================
+/* =========================
    HJÆLPERE
-================================ */
+========================= */
 
-const today = () => new Date().toISOString().slice(0, 10);
-const now = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+const idag = () => new Date().toISOString().slice(0, 10);
+const klokke = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
 const uid = () => Math.random().toString(36).slice(2, 9);
 
-function makeDay(date) {
+function nyDag(dato) {
   return {
-    date,
-    tasks: BASE_TASKS.map(t => ({ id: uid(), text: t, checks: [] })),
-    log: []
+    dato,
+    opgaver: BASE_OPGAVER.map(t => ({ id: uid(), tekst: t, udførtAf: [] })),
+    log: [],
+    godkendt: false,
+    godkendtAf: null
   };
 }
 
-/* ================================
+/* =========================
    APP
-================================ */
+========================= */
 
 export default function App() {
   const [db, setDb] = useState({});
-  const [date, setDate] = useState(today());
-  const [user, setUser] = useState(null);
-  const [userId, setUserId] = useState("");
-  const [pin, setPin] = useState("");
-  const [view, setView] = useState("start");
+  const [dato, setDato] = useState(idag());
+  const [bruger, setBruger] = useState(null);
+  const [brugerId, setBrugerId] = useState("");
+  const [pinkode, setPinkode] = useState("");
+  const [visning, setVisning] = useState("start");
   const [adhoc, setAdhoc] = useState("");
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem(STORAGE) || "{}");
-    if (!stored[today()]) stored[today()] = makeDay(today());
-    setDb(stored);
+    const gemt = JSON.parse(localStorage.getItem(STORAGE) || "{}");
+    if (!gemt[idag()]) gemt[idag()] = nyDag(idag());
+    setDb(gemt);
   }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify(db));
   }, [db]);
 
-  const day = db[date] || makeDay(date);
-  const canWork = user && (user.role === "bpo" || user.role === "koordinator");
-  const isChef = user && user.role === "logistikchef";
+  const dag = db[dato] || nyDag(dato);
+  const kanArbejde = bruger && (bruger.rolle === "bpo" || bruger.rolle === "koordinator");
+  const erChef = bruger && bruger.rolle === "logistikchef";
 
-  function login() {
-    const u = USERS.find(u => u.id === userId && u.pin === pin.toLowerCase().trim());
-    if (!u) return alert("Forkert login");
-    setUser(u);
-    setView("start");
-    setPin("");
+  function logInd() {
+    const fundet = USERS.find(u => u.id === brugerId && u.pin === pinkode.toLowerCase());
+    if (!fundet) return alert("Forkert login");
+    setBruger(fundet);
+    setVisning("start");
+    setPinkode("");
   }
 
-  function toggleTask(task) {
-    if (!canWork) return;
-
-    const mine = task.checks.find(c => c.user === user.name);
-    let newChecks;
-
-    if (mine) {
-      if (user.role === "bpo") {
-        newChecks = task.checks.filter(c => c.user !== user.name);
-        log(`${user.name} fjernede: ${task.text}`);
-      } else return;
-    } else {
-      newChecks = [...task.checks, { user: user.name, time: now() }];
-      log(`${user.name} udførte: ${task.text}`);
-    }
-
-    updateTasks(task.id, newChecks);
+  function logUd() {
+    setBruger(null);
+    setBrugerId("");
+    setPinkode("");
+    setVisning("start");
   }
 
-  function updateTasks(id, checks) {
-    const updated = {
-      ...day,
-      tasks: day.tasks.map(t => t.id === id ? { ...t, checks } : t)
-    };
-    setDb(prev => ({ ...prev, [date]: updated }));
-  }
-
-  function log(text) {
+  function log(tekst) {
     setDb(prev => ({
       ...prev,
-      [date]: { ...day, log: [...day.log, { time: now(), text }] }
+      [dato]: { ...dag, log: [...dag.log, { tid: klokke(), tekst }] }
     }));
   }
 
-  function addAdhoc() {
-    if (!canWork || !adhoc.trim()) return;
-    const t = { id: uid(), text: "AD HOC: " + adhoc, checks: [] };
+  function toggle(opg) {
+    if (!kanArbejde || dag.godkendt) return;
+
+    const har = opg.udførtAf.find(u => u.navn === bruger.navn);
+    let nyListe;
+
+    if (har) {
+      if (bruger.rolle === "bpo") {
+        nyListe = opg.udførtAf.filter(u => u.navn !== bruger.navn);
+        log(`${bruger.navn} fjernede: ${opg.tekst}`);
+      } else return;
+    } else {
+      nyListe = [...opg.udførtAf, { navn: bruger.navn, tid: klokke() }];
+      log(`${bruger.navn} udførte: ${opg.tekst}`);
+    }
+
     setDb(prev => ({
       ...prev,
-      [date]: { ...day, tasks: [...day.tasks, t], log: [...day.log, { time: now(), text: `${user.name} tilføjede ${t.text}` }] }
+      [dato]: { ...dag, opgaver: dag.opgaver.map(o => o.id === opg.id ? { ...o, udførtAf: nyListe } : o) }
+    }));
+  }
+
+  function tilføjAdhoc() {
+    if (!kanArbejde || !adhoc.trim()) return;
+    const ny = { id: uid(), tekst: "AD HOC: " + adhoc, udførtAf: [] };
+    setDb(prev => ({
+      ...prev,
+      [dato]: { ...dag, opgaver: [...dag.opgaver, ny], log: [...dag.log, { tid: klokke(), tekst: `${bruger.navn} tilføjede ${ny.tekst}` }] }
     }));
     setAdhoc("");
   }
 
   const leaderboard = useMemo(() => {
     const c = {};
-    day.tasks.forEach(t => t.checks.forEach(ch => {
-      c[ch.user] = (c[ch.user] || 0) + 1;
-    }));
+    dag.opgaver.forEach(o => o.udførtAf.forEach(u => c[u.navn] = (c[u.navn] || 0) + 1));
     return Object.entries(c).sort((a,b) => b[1] - a[1]);
-  }, [day]);
+  }, [dag]);
 
-  const percent = Math.round((day.tasks.filter(t => t.checks.length > 0).length / day.tasks.length) * 100);
+  const udført = dag.opgaver.filter(o => o.udførtAf.length > 0).length;
+  const procent = Math.round((udført / dag.opgaver.length) * 100);
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
       <div className="max-w-xl mx-auto space-y-4">
 
-        <div className="bg-white p-4 rounded-xl shadow">
-          <h1 className="text-xl font-bold">Daglig tjekliste – {SITE}</h1>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-2 w-full border p-2 rounded" />
+        {/* Topbar */}
+        <div className="bg-white p-4 rounded-xl shadow flex justify-between items-center">
+          <h1 className="font-bold">Daglig tjekliste – {SITE}</h1>
+          {bruger ? (
+            <div className="flex gap-2 items-center">
+              <span>{bruger.navn}</span>
+              <button onClick={logUd} className="bg-red-500 text-white px-3 py-1 rounded">Log ud</button>
+            </div>
+          ) : null}
         </div>
 
-        {!user ? (
+        {!bruger ? (
           <div className="bg-white p-4 rounded-xl shadow space-y-2">
-            <select value={userId} onChange={e => setUserId(e.target.value)} className="w-full border p-2 rounded">
+            <select value={brugerId} onChange={e => setBrugerId(e.target.value)} className="w-full border p-2 rounded">
               <option value="">Vælg bruger</option>
-              {USERS.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+              {USERS.map(u => <option key={u.id} value={u.id}>{u.navn} ({u.rolle})</option>)}
             </select>
-            <input value={pin} onChange={e => setPin(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
-            <button onClick={login} className="w-full bg-black text-white p-3 rounded">Log ind</button>
+            <input value={pinkode} onChange={e => setPinkode(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
+            <button onClick={logInd} className="w-full bg-black text-white p-2 rounded">Log ind</button>
           </div>
         ) : (
           <>
             <div className="flex gap-2">
-              <button onClick={() => setView("start")} className={`flex-1 p-2 rounded ${view==="start"?"bg-black text-white":"bg-gray-200"}`}>Start</button>
-              <button onClick={() => setView("list")} className={`flex-1 p-2 rounded ${view==="list"?"bg-black text-white":"bg-gray-200"}`}>Tjekliste</button>
-              {isChef && <button onClick={() => setView("dash")} className={`flex-1 p-2 rounded ${view==="dash"?"bg-black text-white":"bg-gray-200"}`}>Dashboard</button>}
+              <button onClick={()=>setVisning("start")} className={`flex-1 p-2 rounded ${visning==="start"?"bg-black text-white":"bg-gray-200"}`}>Start</button>
+              <button onClick={()=>setVisning("list")} className={`flex-1 p-2 rounded ${visning==="list"?"bg-black text-white":"bg-gray-200"}`}>Tjekliste</button>
+              {erChef && <button onClick={()=>setVisning("dash")} className={`flex-1 p-2 rounded ${visning==="dash"?"bg-black text-white":"bg-gray-200"}`}>Dashboard</button>}
             </div>
 
-            {view === "start" && (
+            {visning==="start" && (
               <div className="bg-white p-4 rounded-xl shadow">
-                <h2 className="text-lg font-bold">Godmorgen {user.name.split(" ")[0]}</h2>
-                <p>Status: {percent}%</p>
+                <h2 className="font-bold">Godmorgen {bruger.navn.split(" ")[0]}</h2>
+                <p>Status: {procent}%</p>
                 <h3 className="mt-2 font-bold">🏆 Leaderboard</h3>
                 {leaderboard.map((l,i)=><div key={i}>{i+1}. {l[0]} – {l[1]}</div>)}
               </div>
             )}
 
-            {view === "list" && day.tasks.map(t => {
-              const mine = t.checks.some(c => c.user === user.name);
-              return (
-                <div key={t.id} onClick={() => toggleTask(t)} className={`p-3 rounded-xl bg-white shadow ${mine?"line-through text-gray-400":""}`}>
-                  {t.text}
-                </div>
-              );
-            })}
-
-            {canWork && (
-              <div className="bg-white p-4 rounded-xl shadow">
-                <input value={adhoc} onChange={e => setAdhoc(e.target.value)} placeholder="AD-HOC" className="w-full border p-2 rounded" />
-                <button onClick={addAdhoc} className="w-full mt-2 bg-gray-800 text-white p-2 rounded">Tilføj</button>
-              </div>
+            {visning==="list" && (
+              <>
+                {dag.opgaver.map(o=>{
+                  const mine=o.udførtAf.some(u=>u.navn===bruger.navn);
+                  return <div key={o.id} onClick={()=>toggle(o)} className={`p-3 bg-white rounded-xl shadow mb-2 ${mine?"line-through text-gray-400":""}`}>{o.tekst}</div>;
+                })}
+                {kanArbejde && (
+                  <div className="bg-white p-4 rounded-xl shadow mt-2">
+                    <input value={adhoc} onChange={e=>setAdhoc(e.target.value)} placeholder="AD-HOC opgave" className="w-full border p-2 rounded"/>
+                    <button onClick={tilføjAdhoc} className="w-full mt-2 bg-gray-800 text-white p-2 rounded">Tilføj</button>
+                  </div>
+                )}
+              </>
             )}
 
-            {view === "dash" && isChef && (
+            {visning==="dash" && erChef && (
               <div className="bg-white p-4 rounded-xl shadow">
-                <h2 className="font-bold mb-2">Dashboard</h2>
-                <div>Compliance: {percent}%</div>
+                <div>Compliance: {procent}%</div>
                 <h3 className="mt-2 font-bold">Log</h3>
-                {day.log.map((l,i)=><div key={i}>{l.time} – {l.text}</div>)}
+                {dag.log.map((l,i)=><div key={i}>{l.tid} – {l.tekst}</div>)}
               </div>
             )}
           </>
         )}
-
       </div>
     </div>
   );
-} 
+}
