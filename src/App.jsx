@@ -124,12 +124,19 @@ export default function App() {
     {u.name}
   </option>
 ))}
-        </select>
-        <input className="w-full p-2 border rounded mb-2" placeholder="Pinkode" value={pin} onChange={e => setPin(e.target.value)} />
-        <button className="w-full bg-black text-white p-2 rounded" onClick={() => login(currentUser)}>Log ind</button>
-      </div>
-    );
+        <select
+  className="w-full p-2 border rounded mb-2"
+  onChange={e =>
+    setCurrentUser(users.find(u => u.id === Number(e.target.value)))
   }
+>
+  <option value="">Vælg bruger</option>
+  {users.map(u => (
+    <option key={u.id} value={u.id}>
+      {u.name}
+    </option>
+  ))}
+</select>
 
   return (
     <div className="p-4 max-w-md mx-auto space-y-4">
