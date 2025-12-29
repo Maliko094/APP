@@ -1,173 +1,183 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-const SITE = "AG WS";
-
+/* ================= USERS ================= */
 const USERS = [
-  { id: 1, name: "Oliver De Morais Andersen", role: "bpo", pin: "Andersen" },
-  { id: 2, name: "William Garn Snedker Pedersen", role: "bpo", pin: "Pedersen" },
-  { id: 3, name: "Hanne Brobæk Jensen", role: "koordinator", pin: "Jensen" },
-  { id: 4, name: "Martin Pajesø", role: "koordinator", pin: "Pajesø" },
-  { id: 5, name: "Marie Grand", role: "logistikchef", pin: "Grand" },
-  { id: 6, name: "John Storm", role: "logistik", pin: "Storm" }
+  { name: "Oliver De Morais Andersen", role: "bpo", pin: "Andersen" },
+  { name: "William Garn Snedker Pedersen", role: "bpo", pin: "Pedersen" },
+  { name: "Emil Gothart", role: "bpo", pin: "Gothart" },
+
+  { name: "Martin Pajesø", role: "koordinator", pin: "Pajesø" },
+  { name: "Catharina Andersen", role: "koordinator", pin: "Andersen" },
+  { name: "Hanne Brobæk Jensen", role: "koordinator", pin: "Jensen" },
+
+  { name: "John Storm", role: "logistikchef", pin: "Storm" },
+  { name: "Marie Grand", role: "logistikchef", pin: "Grand" }
 ];
 
-const BASE_TASKS = [
-  { id: 1, text: "Arbejdstilladelse – husk sikkerhedskort", type: "Åbning" },
-  { id: 2, text: "Tjek alle SiteHub-hegn for skader", type: "Åbning" },
-  { id: 3, text: "Registrér leverancer i Sitebooking", type: "Åbning" },
-  { id: 4, text: "Kontrollér spand med cigaretskodder", type: "Åbning" },
-  { id: 5, text: "Ryst / rens spaghettimåtter", type: "Åbning" },
-  { id: 6, text: "Rens skærme til fotogenkendelse", type: "Åbning" },
-  { id: 7, text: "Skriv besked på Slack ved akutte beskeder", type: "Lukkevagt" },
-  { id: 8, text: "Lås container S2", type: "Lukkevagt" },
-  { id: 9, text: "Suspendér arbejdstilladelse", type: "Lukkevagt" }
+/* ================= TASKS ================= */
+const OPENING = [
+  "Arbejdstilladelse – husk sikkerhedskort",
+  "Tjek alle SiteHub-hegn for skader",
+  "Registrér leverancer i Sitebooking",
+  "Kontrollér spand med cigaretskodder",
+  "Ryst / rens spaghettimåtter",
+  "Rens skærme til fotogenkendelse"
 ];
 
+const CLOSING = [
+  "Skriv besked på Slack ved akutte beskeder",
+  "Lås container S2",
+  "Suspendér arbejdstilladelse – ring 30750246"
+];
+
+/* ================= HELPERS ================= */
 const today = () => new Date().toISOString().slice(0, 10);
-const now = () => new Date().toISOString();
+const now = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
 
+function loadData() {
+  return JSON.parse(localStorage.getItem("sitehub")) || {};
+}
+
+function saveData(d) {
+  localStorage.setItem("sitehub", JSON.stringify(d));
+}
+
+/* ================= APP ================= */
 export default function App() {
   const [user, setUser] = useState(null);
   const [pin, setPin] = useState("");
-  const [userId, setUserId] = useState("");
-
-  const [view, setView] = useState("login");
-  const [data, setData] = useState(null);
+  const [view, setView] = useState("start");
+  const [date, setDate] = useState(today());
   const [adhoc, setAdhoc] = useState("");
 
-  useEffect(() => {
-    const raw = localStorage.getItem("sitehub-" + today());
-    if (raw) setData(JSON.parse(raw));
-    else {
-      const fresh = {
-        date: today(),
-        tasks: BASE_TASKS.map(t => ({
-          ...t,
-          done: false,
-          doneBy: [],
-          time: null
-        })),
-        adhoc: [],
-        log: []
-      };
-      setData(fresh);
-      localStorage.setItem("sitehub-" + today(), JSON.stringify(fresh));
-    }
-  }, []);
+  const data = loadData();
+  if (!data[date]) {
+    data[date] = {
+      tasks: [...OPENING.map(t => ({ text: t, type: "åbning", actions: [] })),
+              ...CLOSING.map(t => ({ text: t, type: "lukkevagt", actions: [] }))],
+      adhoc: [],
+      log: []
+    };
+    saveData(data);
+  }
 
-  useEffect(() => {
-    if (data) localStorage.setItem("sitehub-" + today(), JSON.stringify(data));
-  }, [data]);
+  const day = data[date];
 
-  function login() {
-    const u = USERS.find(u => u.id === Number(userId) && u.pin === pin);
+  /* ================= LOGIN ================= */
+  function login(name) {
+    const u = USERS.find(u => u.name === name && u.pin === pin);
     if (!u) return alert("Forkert pinkode");
     setUser(u);
+    setPin("");
+  }
+
+  function logout() {
+    setUser(null);
     setView("start");
   }
 
-  function toggleTask(id) {
-    if (!["bpo", "koordinator"].includes(user.role)) return;
+  /* ================= TOGGLE ================= */
+  function toggle(task) {
+    if (!user || !["bpo", "koordinator"].includes(user.role)) return;
 
-    setData(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => {
-        if (t.id !== id) return t;
-        if (t.done && !t.doneBy.find(x => x.name === user.name)) return t;
-
-        const done = !t.done;
-        return {
-          ...t,
-          done,
-          doneBy: done ? [...t.doneBy, { name: user.name, time: now() }] : t.doneBy.filter(x => x.name !== user.name),
-          time: now()
-        };
-      }),
-      log: [...prev.log, `${user.name} ændrede opgave ${id}`]
-    }));
+    const existing = task.actions.find(a => a.user === user.name);
+    if (existing) {
+      task.actions = task.actions.filter(a => a.user !== user.name);
+      day.log.push({ time: now(), user: user.name, text: `fjernede: ${task.text}` });
+    } else {
+      task.actions.push({ user: user.name, time: now() });
+      day.log.push({ time: now(), user: user.name, text: `udførte: ${task.text}` });
+    }
+    saveData(data);
+    setView(v => v);
   }
 
+  /* ================= AD HOC ================= */
   function addAdhoc() {
-    if (!adhoc) return;
-    setData(prev => ({
-      ...prev,
-      adhoc: [...prev.adhoc, { id: Math.random(), text: adhoc, by: user.name, time: now() }]
-    }));
+    if (!adhoc.trim()) return;
+    day.adhoc.push({ text: adhoc, actions: [] });
+    day.log.push({ time: now(), user: user.name, text: `oprettede AD-HOC: ${adhoc}` });
     setAdhoc("");
+    saveData(data);
+    setView(v => v);
   }
 
-  const leaderboard = useMemo(() => {
-    const score = {};
-    data?.tasks.forEach(t =>
-      t.doneBy.forEach(u => (score[u.name] = (score[u.name] || 0) + 1))
-    );
-    return score;
-  }, [data]);
+  /* ================= STATS ================= */
+  const allActions = Object.values(data).flatMap(d =>
+    [...d.tasks, ...d.adhoc].flatMap(t => t.actions.map(a => a.user))
+  );
 
-  if (!data) return null;
+  const leaderboard = USERS.map(u => ({
+    name: u.name,
+    score: allActions.filter(a => a === u.name).length
+  })).sort((a, b) => b.score - a.score);
+
+  /* ================= UI ================= */
+  if (!user) {
+    return (
+      <div className="p-6 max-w-md mx-auto">
+        <h1 className="text-2xl font-bold mb-4">Daglig tjekliste – AG WS</h1>
+        <select className="w-full p-2 mb-2 border" onChange={e => setUser({ name: e.target.value })}>
+          <option>Vælg bruger</option>
+          {USERS.map(u => <option key={u.name}>{u.name}</option>)}
+        </select>
+        <input className="w-full p-2 mb-2 border" placeholder="Efternavn"
+          value={pin} onChange={e => setPin(e.target.value)} />
+        <button className="w-full p-3 bg-black text-white"
+          onClick={() => login(user?.name)}>Log ind</button>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      {!user ? (
-        <div className="max-w-md mx-auto bg-white p-4 rounded">
-          <select onChange={e => setUserId(e.target.value)} className="w-full p-2 mb-2">
-            <option value="">Vælg bruger</option>
-            {USERS.map(u => (
-              <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-            ))}
-          </select>
-          <input value={pin} onChange={e => setPin(e.target.value)} placeholder="Pinkode (efternavn)" className="w-full p-2 mb-2" />
-          <button onClick={login} className="w-full bg-black text-white p-2">Log ind</button>
+    <div className="p-4 max-w-md mx-auto space-y-4">
+      <div className="flex justify-between items-center">
+        <div>{user.name} ({user.role})</div>
+        <button onClick={logout}>Log ud</button>
+      </div>
+
+      <div className="flex gap-3 text-sm">
+        <button onClick={() => setView("start")}>Start</button>
+        <button onClick={() => setView("list")}>Tjekliste</button>
+        <button onClick={() => setView("dashboard")}>Dashboard</button>
+        <button onClick={() => setView("leaderboard")}>Leaderboard</button>
+      </div>
+
+      {view === "start" && (
+        <div>
+          <h2 className="text-xl">Godmorgen 👋</h2>
+          <p>God arbejdslyst.</p>
+          <h3 className="mt-4 font-bold">Top i dag</h3>
+          {leaderboard.slice(0,3).map(l => <div key={l.name}>{l.name}: {l.score}</div>)}
         </div>
-      ) : (
+      )}
+
+      {view === "list" && (
         <>
-          <div className="flex justify-between mb-2">
-            <div>{user.name} ({user.role})</div>
-            <button onClick={() => { setUser(null); setView("login"); }}>Log ud</button>
-          </div>
-
-          <div className="flex gap-2 mb-4">
-            <button onClick={() => setView("start")}>Start</button>
-            <button onClick={() => setView("check")}>Tjekliste</button>
-            <button onClick={() => setView("dash")}>Dashboard</button>
-            <button onClick={() => setView("leader")}>Leaderboard</button>
-          </div>
-
-          {view === "check" && (
-            <>
-              {data.tasks.map(t => (
-                <div key={t.id} className={`p-2 bg-white mb-2 rounded ${t.done ? "line-through opacity-50" : ""}`}>
-                  <div className="flex justify-between">
-                    <span>{t.type}: {t.text}</span>
-                    <button onClick={() => toggleTask(t.id)}>✔</button>
-                  </div>
-                  {t.doneBy.length > 0 && (
-                    <div className="text-xs text-gray-500">
-                      {t.doneBy.map(x => x.name).join(", ")}
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              <input value={adhoc} onChange={e => setAdhoc(e.target.value)} className="w-full p-2" placeholder="AD HOC opgave" />
-              <button onClick={addAdhoc} className="w-full bg-black text-white p-2 mt-2">Tilføj</button>
-            </>
-          )}
-
-          {view === "leader" && (
-            <div>
-              {Object.entries(leaderboard).map(([n, v]) => (
-                <div key={n}>{n}: {v}</div>
-              ))}
+          {[...day.tasks, ...day.adhoc].map((t,i) => (
+            <div key={i} onClick={() => toggle(t)}
+              className={`p-3 rounded border ${t.actions.length ? "line-through bg-green-100" : ""}`}>
+              {t.type && <small>{t.type}</small>} {t.text}
+              {t.actions.map(a => <div key={a.user}>{a.user} {a.time}</div>)}
             </div>
-          )}
-
-          {view === "dash" && (
-            <div>
-              {data.log.map((l, i) => <div key={i}>{l}</div>)}
-            </div>
-          )}
+          ))}
+          <input value={adhoc} onChange={e=>setAdhoc(e.target.value)} className="w-full p-2 border" placeholder="AD-HOC opgave"/>
+          <button onClick={addAdhoc} className="w-full bg-black text-white p-3">Tilføj</button>
         </>
+      )}
+
+      {view === "dashboard" && (
+        <div>
+          <h2 className="font-bold">Log</h2>
+          {day.log.map((l,i)=><div key={i}>{l.time} – {l.user} {l.text}</div>)}
+        </div>
+      )}
+
+      {view === "leaderboard" && (
+        <div>
+          <h2 className="font-bold">Leaderboard</h2>
+          {leaderboard.map(l=><div key={l.name}>{l.name}: {l.score}</div>)}
+        </div>
       )}
     </div>
   );
