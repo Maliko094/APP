@@ -1,182 +1,221 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-/* ================= USERS ================= */
+/* ===========================
+   KONFIGURATION
+=========================== */
+
+const SITE = "AG WS";
+
+/* Brugere (pinkode = efternavn) */
 const USERS = [
-  { name: "Oliver De Morais Andersen", role: "bpo", pin: "Andersen" },
-  { name: "William Garn Snedker Pedersen", role: "bpo", pin: "Pedersen" },
-  { name: "Emil Gothart", role: "bpo", pin: "Gothart" },
+  { id: "oliver", name: "Oliver De Morais Andersen", role: "bpo", pin: "Andersen" },
+  { id: "william", name: "William Garn Snedker Pedersen", role: "bpo", pin: "Pedersen" },
+  { id: "emil", name: "Emil Gothart", role: "bpo", pin: "Gothart" },
 
-  { name: "Martin Pajesø", role: "koordinator", pin: "Pajesø" },
-  { name: "Catharina Andersen", role: "koordinator", pin: "Andersen" },
-  { name: "Hanne Brobæk Jensen", role: "koordinator", pin: "Jensen" },
+  { id: "martin", name: "Martin Pajesø", role: "koordinator", pin: "Pajesø" },
+  { id: "catharina", name: "Catharina Andersen", role: "koordinator", pin: "Andersen" },
+  { id: "hanne", name: "Hanne Brobæk Jensen", role: "koordinator", pin: "Jensen" },
 
-  { name: "John Storm", role: "logistikchef", pin: "Storm" },
-  { name: "Marie Grand", role: "logistikchef", pin: "Grand" }
+  { id: "john", name: "John Storm", role: "logistikchef", pin: "Storm" },
+  { id: "marie", name: "Marie Grand", role: "logistikchef", pin: "Grand" },
 ];
 
-/* ================= TASKS ================= */
 const OPENING = [
   "Arbejdstilladelse – husk sikkerhedskort",
-  "Tjek alle SiteHub-hegn for skader",
-  "Registrér leverancer i Sitebooking",
+  "Tjek alle SiteHub-hegn for skader (inkl. jordvolden)",
+  "Registrér leverancer i Sitebooking (billeder af nr.plade og følgeseddel)",
   "Kontrollér spand med cigaretskodder",
   "Ryst / rens spaghettimåtter",
-  "Rens skærme til fotogenkendelse"
+  "Rens skærme til fotogenkendelse",
 ];
 
 const CLOSING = [
+  "Tjek alle SiteHub-hegn for skader",
   "Skriv besked på Slack ved akutte beskeder",
-  "Lås container S2",
-  "Suspendér arbejdstilladelse – ring 30750246"
+  "Lås container S2 ved fyraften",
+  "Suspendér arbejdstilladelse – ring 30750246",
 ];
 
-/* ================= HELPERS ================= */
+const STORAGE = "sitehub_data_v1";
+
+/* ===========================
+   HJÆLPERE
+=========================== */
+
 const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+const uid = () => Math.random().toString(36).slice(2, 9);
 
-function loadData() {
-  return JSON.parse(localStorage.getItem("sitehub")) || {};
+/* ===========================
+   INIT DAG
+=========================== */
+
+function newDay() {
+  return {
+    date: today(),
+    tasks: [
+      ...OPENING.map(t => ({ id: uid(), text: t, type: "Åbning", doneBy: [] })),
+      ...CLOSING.map(t => ({ id: uid(), text: t, type: "Lukkevagt", doneBy: [] })),
+    ],
+    adhoc: [],
+    log: [],
+  };
 }
 
-function saveData(d) {
-  localStorage.setItem("sitehub", JSON.stringify(d));
-}
+/* ===========================
+   APP
+=========================== */
 
-/* ================= APP ================= */
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [userId, setUserId] = useState("");
   const [pin, setPin] = useState("");
+  const [user, setUser] = useState(null);
   const [view, setView] = useState("start");
+
+  const [days, setDays] = useState({});
   const [date, setDate] = useState(today());
-  const [adhoc, setAdhoc] = useState("");
+  const [adhocText, setAdhocText] = useState("");
 
-  const data = loadData();
-  if (!data[date]) {
-    data[date] = {
-      tasks: [...OPENING.map(t => ({ text: t, type: "åbning", actions: [] })),
-              ...CLOSING.map(t => ({ text: t, type: "lukkevagt", actions: [] }))],
-      adhoc: [],
-      log: []
-    };
-    saveData(data);
-  }
+  useEffect(() => {
+    const data = JSON.parse(localStorage.getItem(STORAGE) || "{}");
+    if (!data[date]) data[date] = newDay();
+    setDays(data);
+  }, []);
 
-  const day = data[date];
+  useEffect(() => {
+    localStorage.setItem(STORAGE, JSON.stringify(days));
+  }, [days]);
 
-  /* ================= LOGIN ================= */
-  function login(name) {
-    const u = USERS.find(u => u.name === name && u.pin === pin);
-    if (!u) return alert("Forkert pinkode");
+  const day = days[date] || newDay();
+
+  /* LOGIN */
+  function login() {
+    const u = USERS.find(x => x.id === userId && x.pin === pin);
+    if (!u) return alert("Forkert login");
     setUser(u);
-    setPin("");
   }
-
   function logout() {
     setUser(null);
     setView("start");
   }
 
-  /* ================= TOGGLE ================= */
+  /* TASK TOGGLE */
   function toggle(task) {
-    if (!user || !["bpo", "koordinator"].includes(user.role)) return;
+    if (!["bpo", "koordinator"].includes(user.role)) return;
 
-    const existing = task.actions.find(a => a.user === user.name);
-    if (existing) {
-      task.actions = task.actions.filter(a => a.user !== user.name);
-      day.log.push({ time: now(), user: user.name, text: `fjernede: ${task.text}` });
-    } else {
-      task.actions.push({ user: user.name, time: now() });
-      day.log.push({ time: now(), user: user.name, text: `udførte: ${task.text}` });
-    }
-    saveData(data);
-    setView(v => v);
+    setDays(prev => {
+      const copy = { ...prev };
+      const d = { ...copy[date] };
+      d.tasks = d.tasks.map(t => {
+        if (t.id !== task.id) return t;
+        const exists = t.doneBy.find(x => x.name === user.name);
+        let doneBy = exists
+          ? t.doneBy.filter(x => x.name !== user.name)
+          : [...t.doneBy, { name: user.name, time: now() }];
+
+        d.log.push(`${now()} – ${user.name} ${exists ? "fjernede" : "udførte"}: ${t.text}`);
+
+        return { ...t, doneBy };
+      });
+      copy[date] = d;
+      return copy;
+    });
   }
 
-  /* ================= AD HOC ================= */
+  /* AD HOC */
   function addAdhoc() {
-    if (!adhoc.trim()) return;
-    day.adhoc.push({ text: adhoc, actions: [] });
-    day.log.push({ time: now(), user: user.name, text: `oprettede AD-HOC: ${adhoc}` });
-    setAdhoc("");
-    saveData(data);
-    setView(v => v);
+    if (!adhocText.trim()) return;
+    setDays(prev => {
+      const copy = { ...prev };
+      copy[date].adhoc.push({
+        id: uid(),
+        text: adhocText,
+        doneBy: [],
+      });
+      copy[date].log.push(`${now()} – ${user.name} oprettede AD HOC: ${adhocText}`);
+      return copy;
+    });
+    setAdhocText("");
   }
 
-  /* ================= STATS ================= */
-  const allActions = Object.values(data).flatMap(d =>
-    [...d.tasks, ...d.adhoc].flatMap(t => t.actions.map(a => a.user))
-  );
-
-  const leaderboard = USERS.map(u => ({
-    name: u.name,
-    score: allActions.filter(a => a === u.name).length
-  })).sort((a, b) => b.score - a.score);
-
-  /* ================= UI ================= */
-  if (!user) {
-    return (
-      <div className="p-6 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Daglig tjekliste – AG WS</h1>
-        <select className="w-full p-2 mb-2 border" onChange={e => setUser({ name: e.target.value })}>
-          <option>Vælg bruger</option>
-          {USERS.map(u => <option key={u.name}>{u.name}</option>)}
-        </select>
-        <input className="w-full p-2 mb-2 border" placeholder="Efternavn"
-          value={pin} onChange={e => setPin(e.target.value)} />
-        <button className="w-full p-3 bg-black text-white"
-          onClick={() => login(user?.name)}>Log ind</button>
-      </div>
-    );
-  }
+  /* LEADERBOARD */
+  const leaderboard = useMemo(() => {
+    const scores = {};
+    Object.values(days).forEach(d => {
+      [...d.tasks, ...d.adhoc].forEach(t =>
+        t.doneBy.forEach(p => {
+          scores[p.name] = (scores[p.name] || 0) + 1;
+        })
+      );
+    });
+    return Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  }, [days]);
 
   return (
-    <div className="p-4 max-w-md mx-auto space-y-4">
-      <div className="flex justify-between items-center">
-        <div>{user.name} ({user.role})</div>
-        <button onClick={logout}>Log ud</button>
+    <div style={{ fontFamily: "system-ui", background: "#f2f2f7", minHeight: "100vh", paddingBottom: 80 }}>
+      <div style={{ padding: 16, background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.05)" }}>
+        {user ? (
+          <>
+            <strong>{user.name}</strong> ({user.role}){" "}
+            <button onClick={logout} style={{ float: "right" }}>Log ud</button>
+            <div style={{ marginTop: 10 }}>
+              {["start","tjek","dashboard","leader"].map(v=>(
+                <button key={v} onClick={()=>setView(v)} style={{marginRight:8}}>{v}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <select onChange={e=>setUserId(e.target.value)}>
+              <option>Vælg bruger</option>
+              {USERS.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+            <input placeholder="Efternavn" value={pin} onChange={e=>setPin(e.target.value)} />
+            <button onClick={login}>Log ind</button>
+          </>
+        )}
       </div>
 
-      <div className="flex gap-3 text-sm">
-        <button onClick={() => setView("start")}>Start</button>
-        <button onClick={() => setView("list")}>Tjekliste</button>
-        <button onClick={() => setView("dashboard")}>Dashboard</button>
-        <button onClick={() => setView("leaderboard")}>Leaderboard</button>
-      </div>
-
-      {view === "start" && (
-        <div>
-          <h2 className="text-xl">Godmorgen 👋</h2>
-          <p>God arbejdslyst.</p>
-          <h3 className="mt-4 font-bold">Top i dag</h3>
-          {leaderboard.slice(0,3).map(l => <div key={l.name}>{l.name}: {l.score}</div>)}
+      {view==="start" && (
+        <div style={{padding:16}}>
+          <h2>Godmorgen 👋</h2>
+          <h3>Leaderboard</h3>
+          {leaderboard.map(([n,s],i)=><div key={n}>{i+1}. {n} – {s} opgaver</div>)}
         </div>
       )}
 
-      {view === "list" && (
-        <>
-          {[...day.tasks, ...day.adhoc].map((t,i) => (
-            <div key={i} onClick={() => toggle(t)}
-              className={`p-3 rounded border ${t.actions.length ? "line-through bg-green-100" : ""}`}>
-              {t.type && <small>{t.type}</small>} {t.text}
-              {t.actions.map(a => <div key={a.user}>{a.user} {a.time}</div>)}
+      {view==="tjek" && user && (
+        <div style={{padding:16}}>
+          {[...day.tasks,...day.adhoc].map(t=>(
+            <div key={t.id} onClick={()=>toggle(t)} style={{
+              background:"#fff",
+              padding:12,
+              marginBottom:8,
+              borderRadius:10,
+              textDecoration: t.doneBy.length?"line-through":"none"
+            }}>
+              <strong>{t.type||"AD HOC"}:</strong> {t.text}
+              <div style={{fontSize:12}}>
+                {t.doneBy.map(p=>`${p.name} ${p.time}`).join(", ")}
+              </div>
             </div>
           ))}
-          <input value={adhoc} onChange={e=>setAdhoc(e.target.value)} className="w-full p-2 border" placeholder="AD-HOC opgave"/>
-          <button onClick={addAdhoc} className="w-full bg-black text-white p-3">Tilføj</button>
-        </>
-      )}
-
-      {view === "dashboard" && (
-        <div>
-          <h2 className="font-bold">Log</h2>
-          {day.log.map((l,i)=><div key={i}>{l.time} – {l.user} {l.text}</div>)}
+          <input value={adhocText} onChange={e=>setAdhocText(e.target.value)} placeholder="AD HOC opgave" />
+          <button onClick={addAdhoc}>Tilføj</button>
         </div>
       )}
 
-      {view === "leaderboard" && (
-        <div>
-          <h2 className="font-bold">Leaderboard</h2>
-          {leaderboard.map(l=><div key={l.name}>{l.name}: {l.score}</div>)}
+      {view==="dashboard" && (
+        <div style={{padding:16}}>
+          <h3>Log</h3>
+          {day.log.map((l,i)=><div key={i}>{l}</div>)}
+        </div>
+      )}
+
+      {view==="leader" && (
+        <div style={{padding:16}}>
+          <h3>Leaderboard</h3>
+          {leaderboard.map(([n,s])=><div key={n}>{n}: {s}</div>)}
         </div>
       )}
     </div>
