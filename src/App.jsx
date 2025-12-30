@@ -1,212 +1,213 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-/* =========================
-   KONFIGURATION
-========================= */
-
-const SITE = "AG WS";
-const STORAGE = "sitehub_ag_ws_final";
-
+/* ================= USERS ================= */
 const USERS = [
-  { id: "oliver", navn: "Oliver De Morais Andersen", rolle: "bpo", pin: "andersen" },
-  { id: "william", navn: "William Garn Snedker Pedersen", rolle: "bpo", pin: "pedersen" },
-  { id: "emil", navn: "Emil Gothart", rolle: "bpo", pin: "gothart" },
-
-  { id: "martin", navn: "Martin Pajesø", rolle: "koordinator", pin: "pajesø" },
-  { id: "catharina", navn: "Catharina Andersen", rolle: "koordinator", pin: "andersen" },
-  { id: "hanne", navn: "Hanne Brobæk Jensen", rolle: "koordinator", pin: "jensen" },
-
-  { id: "john", navn: "John Storm", rolle: "logistikchef", pin: "storm" },
-  { id: "marie", navn: "Marie Grand", rolle: "logistikchef", pin: "grand" }
+  { id: 1, name: "Catharina Andersen", role: "Koordinator", code: "andersen" },
+  { id: 2, name: "Emil Gothart", role: "Procesoperatør", code: "gothart" },
+  { id: 3, name: "Hanne Brobæk Jensen", role: "Koordinator", code: "jensen" },
+  { id: 4, name: "John Storm", role: "Logistikchef", code: "storm" },
+  { id: 5, name: "Marie Grand", role: "Logistik", code: "grand" },
+  { id: 6, name: "Martin Pajesø", role: "Koordinator", code: "pajesø" },
+  { id: 7, name: "Oliver De Morais Andersen", role: "BPO", code: "andersen" },
+  { id: 8, name: "William Garn Snedker Pedersen", role: "BPO", code: "pedersen" },
 ];
 
-const BASE_OPGAVER = [
-  "Arbejdstilladelse – husk sikkerhedskort",
-  "Tjek SiteHub-hegn",
-  "Registrér leverancer i Sitebooking",
-  "Rens fotogenkendelses-skærme",
-  "Billede af følgeseddel",
-  "Rens spaghettimåtter",
-  "Tjek cigaretskodder",
-  "Oprydning",
-  "Lås container S2",
-  "Suspendér arbejdstilladelse"
+const CAN_CHECK = (role) => role === "BPO" || role === "Koordinator";
+
+/* ================= TASKS ================= */
+const BASE_TASKS = [
+  { id: 1, text: "Arbejdstilladelse – husk sikkerhedskort", type: "open" },
+  { id: 2, text: "Tjek alle SiteHub-hegn for skader (inkl. jordvolden)", type: "open" },
+  { id: 3, text: "Registrér leverancer i Sitebooking (nr.plade + følgeseddel)", type: "open" },
+  { id: 4, text: "Kontrollér spand med cigaretskodder", type: "open" },
+  { id: 5, text: "Ryst / rens spaghettimåtter", type: "open" },
+  { id: 6, text: "Rens skærme til fotogenkendelse", type: "open" },
+  { id: 7, text: "Skriv besked på Slack ved akutte beskeder", type: "close" },
+  { id: 8, text: "Lås container S2", type: "close" },
+  { id: 9, text: "Suspendér arbejdstilladelse – ring 30750246", type: "close" },
 ];
 
-/* =========================
-   HJÆLPERE
-========================= */
+/* ================= UTIL ================= */
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
-const idag = () => new Date().toISOString().slice(0, 10);
-const klokke = () => new Date().toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
-const uid = () => Math.random().toString(36).slice(2, 9);
+const loadDay = (date) => {
+  const raw = localStorage.getItem("sitehub-" + date);
+  if (!raw) {
+    return { tasks: BASE_TASKS.map(t => ({ ...t, doneBy: [] })), log: [] };
+  }
+  return JSON.parse(raw);
+};
 
-function nyDag(dato) {
-  return {
-    dato,
-    opgaver: BASE_OPGAVER.map(t => ({ id: uid(), tekst: t, udførtAf: [] })),
-    log: [],
-    godkendt: false,
-    godkendtAf: null
-  };
-}
+const saveDay = (date, data) => {
+  localStorage.setItem("sitehub-" + date, JSON.stringify(data));
+};
 
-/* =========================
-   APP
-========================= */
-
+/* ================= APP ================= */
 export default function App() {
-  const [db, setDb] = useState({});
-  const [dato, setDato] = useState(idag());
-  const [bruger, setBruger] = useState(null);
-  const [brugerId, setBrugerId] = useState("");
-  const [pinkode, setPinkode] = useState("");
-  const [visning, setVisning] = useState("start");
-  const [adhoc, setAdhoc] = useState("");
+  const [date, setDate] = useState(todayStr());
+  const [dayData, setDayData] = useState(loadDay(todayStr()));
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [code, setCode] = useState("");
+  const [page, setPage] = useState("start");
+  const [adHocText, setAdHocText] = useState("");
 
   useEffect(() => {
-    const gemt = JSON.parse(localStorage.getItem(STORAGE) || "{}");
-    if (!gemt[idag()]) gemt[idag()] = nyDag(idag());
-    setDb(gemt);
-  }, []);
+    const d = loadDay(date);
+    setDayData(d);
+  }, [date]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE, JSON.stringify(db));
-  }, [db]);
+  const login = () => {
+    const u = USERS.find(
+      u => u.code === code.toLowerCase()
+    );
+    if (!u) return alert("Forkert kode");
+    setCurrentUser(u);
+  };
 
-  const dag = db[dato] || nyDag(dato);
-  const kanArbejde = bruger && (bruger.rolle === "bpo" || bruger.rolle === "koordinator");
-  const erChef = bruger && bruger.rolle === "logistikchef";
+  const logout = () => {
+    setCurrentUser(null);
+    setCode("");
+    setPage("start");
+  };
 
-  function logInd() {
-    const fundet = USERS.find(u => u.id === brugerId && u.pin === pinkode.toLowerCase());
-    if (!fundet) return alert("Forkert login");
-    setBruger(fundet);
-    setVisning("start");
-    setPinkode("");
-  }
+  const toggleTask = (taskId) => {
+    if (!CAN_CHECK(currentUser.role)) return;
 
-  function logUd() {
-    setBruger(null);
-    setBrugerId("");
-    setPinkode("");
-    setVisning("start");
-  }
+    const newData = { ...dayData };
+    const t = newData.tasks.find(t => t.id === taskId);
 
-  function log(tekst) {
-    setDb(prev => ({
-      ...prev,
-      [dato]: { ...dag, log: [...dag.log, { tid: klokke(), tekst }] }
-    }));
-  }
+    const already = t.doneBy.find(d => d.userId === currentUser.id);
 
-  function toggle(opg) {
-    if (!kanArbejde || dag.godkendt) return;
-
-    const har = opg.udførtAf.find(u => u.navn === bruger.navn);
-    let nyListe;
-
-    if (har) {
-      if (bruger.rolle === "bpo") {
-        nyListe = opg.udførtAf.filter(u => u.navn !== bruger.navn);
-        log(`${bruger.navn} fjernede: ${opg.tekst}`);
-      } else return;
+    if (already) {
+      t.doneBy = t.doneBy.filter(d => d.userId !== currentUser.id);
+      newData.log.push({
+        time: new Date().toLocaleTimeString(),
+        text: `${currentUser.name} fjernede: ${t.text}`,
+      });
     } else {
-      nyListe = [...opg.udførtAf, { navn: bruger.navn, tid: klokke() }];
-      log(`${bruger.navn} udførte: ${opg.tekst}`);
+      t.doneBy.push({ userId: currentUser.id, name: currentUser.name });
+      newData.log.push({
+        time: new Date().toLocaleTimeString(),
+        text: `${currentUser.name} udførte: ${t.text}`,
+      });
     }
 
-    setDb(prev => ({
-      ...prev,
-      [dato]: { ...dag, opgaver: dag.opgaver.map(o => o.id === opg.id ? { ...o, udførtAf: nyListe } : o) }
-    }));
+    setDayData(newData);
+    saveDay(date, newData);
+  };
+
+  const addAdHoc = () => {
+    if (!adHocText.trim()) return;
+    const newTask = {
+      id: Date.now(),
+      text: adHocText,
+      type: "adhoc",
+      doneBy: [],
+    };
+    const newData = { ...dayData };
+    newData.tasks.push(newTask);
+    newData.log.push({
+      time: new Date().toLocaleTimeString(),
+      text: `${currentUser.name} oprettede AD-HOC: ${adHocText}`,
+    });
+    setDayData(newData);
+    saveDay(date, newData);
+    setAdHocText("");
+  };
+
+  /* ================= STATS ================= */
+  const stats = {};
+  dayData.tasks.forEach(t =>
+    t.doneBy.forEach(d => {
+      stats[d.name] = (stats[d.name] || 0) + 1;
+    })
+  );
+
+  const leaderboard = Object.entries(stats).sort((a, b) => b[1] - a[1]);
+
+  /* ================= UI ================= */
+  if (!currentUser) {
+    return (
+      <div style={{ padding: 20 }}>
+        <h2>SiteHub AG WS</h2>
+        <select onChange={e => setCode("")}>
+          <option>Vælg bruger</option>
+          {USERS.map(u => (
+            <option key={u.id}>{u.name}</option>
+          ))}
+        </select>
+        <input placeholder="Kodeord" value={code} onChange={e => setCode(e.target.value)} />
+        <button onClick={login}>Log ind</button>
+      </div>
+    );
   }
-
-  function tilføjAdhoc() {
-    if (!kanArbejde || !adhoc.trim()) return;
-    const ny = { id: uid(), tekst: "AD HOC: " + adhoc, udførtAf: [] };
-    setDb(prev => ({
-      ...prev,
-      [dato]: { ...dag, opgaver: [...dag.opgaver, ny], log: [...dag.log, { tid: klokke(), tekst: `${bruger.navn} tilføjede ${ny.tekst}` }] }
-    }));
-    setAdhoc("");
-  }
-
-  const leaderboard = useMemo(() => {
-    const c = {};
-    dag.opgaver.forEach(o => o.udførtAf.forEach(u => c[u.navn] = (c[u.navn] || 0) + 1));
-    return Object.entries(c).sort((a,b) => b[1] - a[1]);
-  }, [dag]);
-
-  const udført = dag.opgaver.filter(o => o.udførtAf.length > 0).length;
-  const procent = Math.round((udført / dag.opgaver.length) * 100);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-xl mx-auto space-y-4">
-
-        {/* Topbar */}
-        <div className="bg-white p-4 rounded-xl shadow flex justify-between items-center">
-          <h1 className="font-bold">Daglig tjekliste – {SITE}</h1>
-          {bruger ? (
-            <div className="flex gap-2 items-center">
-              <span>{bruger.navn}</span>
-              <button onClick={logUd} className="bg-red-500 text-white px-3 py-1 rounded">Log ud</button>
-            </div>
-          ) : null}
-        </div>
-
-        {!bruger ? (
-          <div className="bg-white p-4 rounded-xl shadow space-y-2">
-            <select value={brugerId} onChange={e => setBrugerId(e.target.value)} className="w-full border p-2 rounded">
-              <option value="">Vælg bruger</option>
-              {USERS.map(u => <option key={u.id} value={u.id}>{u.navn} ({u.rolle})</option>)}
-            </select>
-            <input value={pinkode} onChange={e => setPinkode(e.target.value)} placeholder="Efternavn" className="w-full border p-2 rounded" />
-            <button onClick={logInd} className="w-full bg-black text-white p-2 rounded">Log ind</button>
-          </div>
-        ) : (
-          <>
-            <div className="flex gap-2">
-              <button onClick={()=>setVisning("start")} className={`flex-1 p-2 rounded ${visning==="start"?"bg-black text-white":"bg-gray-200"}`}>Start</button>
-              <button onClick={()=>setVisning("list")} className={`flex-1 p-2 rounded ${visning==="list"?"bg-black text-white":"bg-gray-200"}`}>Tjekliste</button>
-              {erChef && <button onClick={()=>setVisning("dash")} className={`flex-1 p-2 rounded ${visning==="dash"?"bg-black text-white":"bg-gray-200"}`}>Dashboard</button>}
-            </div>
-
-            {visning==="start" && (
-              <div className="bg-white p-4 rounded-xl shadow">
-                <h2 className="font-bold">Godmorgen {bruger.navn.split(" ")[0]}</h2>
-                <p>Status: {procent}%</p>
-                <h3 className="mt-2 font-bold">🏆 Leaderboard</h3>
-                {leaderboard.map((l,i)=><div key={i}>{i+1}. {l[0]} – {l[1]}</div>)}
-              </div>
-            )}
-
-            {visning==="list" && (
-              <>
-                {dag.opgaver.map(o=>{
-                  const mine=o.udførtAf.some(u=>u.navn===bruger.navn);
-                  return <div key={o.id} onClick={()=>toggle(o)} className={`p-3 bg-white rounded-xl shadow mb-2 ${mine?"line-through text-gray-400":""}`}>{o.tekst}</div>;
-                })}
-                {kanArbejde && (
-                  <div className="bg-white p-4 rounded-xl shadow mt-2">
-                    <input value={adhoc} onChange={e=>setAdhoc(e.target.value)} placeholder="AD-HOC opgave" className="w-full border p-2 rounded"/>
-                    <button onClick={tilføjAdhoc} className="w-full mt-2 bg-gray-800 text-white p-2 rounded">Tilføj</button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {visning==="dash" && erChef && (
-              <div className="bg-white p-4 rounded-xl shadow">
-                <div>Compliance: {procent}%</div>
-                <h3 className="mt-2 font-bold">Log</h3>
-                {dag.log.map((l,i)=><div key={i}>{l.tid} – {l.tekst}</div>)}
-              </div>
-            )}
-          </>
-        )}
+    <div style={{ padding: 20 }}>
+      <div>
+        {currentUser.name} ({currentUser.role})
+        <button onClick={logout}>Log ud</button>
       </div>
+
+      <div>
+        <button onClick={() => setPage("start")}>Start</button>
+        <button onClick={() => setPage("list")}>Tjekliste</button>
+        <button onClick={() => setPage("dashboard")}>Dashboard</button>
+        <button onClick={() => setPage("leaderboard")}>Leaderboard</button>
+      </div>
+
+      {page === "start" && (
+        <div>
+          <h2>Godmorgen 👋</h2>
+          <p>God arbejdslyst</p>
+          <h3>Leaderboard i dag</h3>
+          {leaderboard.map(([n, c]) => (
+            <div key={n}>{n}: {c}</div>
+          ))}
+        </div>
+      )}
+
+      {page === "list" && (
+        <div>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          {dayData.tasks.map(t => (
+            <div key={t.id} onClick={() => toggleTask(t.id)}>
+              {t.type === "open" && "Åbning: "}
+              {t.type === "close" && "Lukkevagt: "}
+              {t.text}
+              {t.doneBy.length > 0 && (
+                <span> ✔ ({t.doneBy.map(d => d.name).join(", ")})</span>
+              )}
+            </div>
+          ))}
+
+          <input
+            placeholder="AD-HOC opgave"
+            value={adHocText}
+            onChange={e => setAdHocText(e.target.value)}
+          />
+          <button onClick={addAdHoc}>Tilføj</button>
+        </div>
+      )}
+
+      {page === "dashboard" && (
+        <div>
+          <h3>Log</h3>
+          {dayData.log.map((l, i) => (
+            <div key={i}>{l.time} – {l.text}</div>
+          ))}
+        </div>
+      )}
+
+      {page === "leaderboard" && (
+        <div>
+          <h3>Leaderboard</h3>
+          {leaderboard.map(([n, c]) => (
+            <div key={n}>{n}: {c} opgaver</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
